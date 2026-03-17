@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import asyncio
+import httpx
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, Header
@@ -18,7 +19,8 @@ from schemas import (
     OrderCreate, OrderResponse, DictionaryFieldCreate, DictionaryFieldResponse,
     CategoryMetadataCreate, CategoryMetadataResponse, EquipmentItemResponse,
     ConnectionStatus, ExtractRequest, ExtractResponse, EnrichRequest, EnrichResponse,
-    DuplicateCheckRequest, DuplicateCheckResponse, KtruLookupResponse, ScannedCodeCreate
+    DuplicateCheckRequest, DuplicateCheckResponse, KtruLookupResponse, ScannedCodeCreate,
+    OllamaRequest, OllamaResponse
 )
 from database import engine, get_session, init_db, check_connection
 from services.parsers import parse_file, get_allowed_extensions
@@ -76,6 +78,61 @@ async def seed_initial_data():
                 session.add(meta)
 
         await session.commit()
+
+
+OLLAMA_CLOUD_API_KEY = os.getenv("OLLAMA_CLOUD_API_KEY", "")
+
+
+@app.post("/ollama/generate", response_model=OllamaResponse)
+async def ollama_generate(request: OllamaRequest):
+    """
+    Прокси для запросов к облачному Ollama API.
+    API ключ берётся из переменной окружения OLLAMA_CLOUD_API_KEY.
+    """
+    if not OLLAMA_CLOUD_API_KEY:
+        raise HTTPException(status_code=500, detail="OLLAMA_CLOUD_API_KEY не настроен на сервере")
+    
+    endpoint = "https://ollama.com/api"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OLLAMA_CLOUD_API_KEY}"
+    }
+    
+    body = {
+        "model": request.model,
+        "prompt": request.prompt,
+        "stream": request.stream,
+    }
+    if request.options:
+        body["options"] = request.options
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{endpoint}/generate",
+            headers=headers,
+            json=body
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Ошибка Ollama: {response.text}"
+            )
+        
+        data = response.json()
+        
+        token_usage = None
+        if "prompt_eval_count" in data or "eval_count" in data:
+            prompt_tokens = data.get("prompt_eval_count", 0) or 0
+            completion_tokens = data.get("eval_count", 0) or 0
+            total = prompt_tokens + completion_tokens
+            token_usage = f"K_{prompt_tokens}+P_{completion_tokens}=T_{total}"
+        
+        return OllamaResponse(
+            response=data.get("response", ""),
+            token_usage=token_usage
+        )
 
 
 @app.get("/")
@@ -936,8 +993,3 @@ async def export_scanned_codes_to_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -16,7 +16,7 @@ import {
   getDbConfig, saveDbConfig, exportConfigToFile, importConfigFromText, type DBConfig,
   clearRemoteDatabase, fetchDictionaryFromPostgres, type CategoryMetadata,
   saveDictionaryToPostgres,
-  checkConnection
+  checkConnection, getApiUrl
 } from './services/db.ts';
 import { parseFile } from './services/parsers.ts';
 import { subscribeLogs, LogEntry, clearLogs, addLog } from './services/logger.ts';
@@ -115,16 +115,15 @@ const App: React.FC = () => {
         }
         setLlmStatus({ ok: true, msg: `Модель ${config.openrouterModel} отвечает` });
       } else if (config.provider === 'ollama') {
-        const endpoint = config.ollamaMode === 'local' 
-          ? config.ollamaEndpoint 
-          : 'https://api.olama.cloud/v1';
-        const model = config.ollamaMode === 'local' ? config.ollamaLocalModel : config.ollamaCloudModel;
-        const response = await fetch(`${endpoint}/chat`, {
+        const isCloud = config.ollamaMode === 'cloud';
+        const endpoint = isCloud ? getApiUrl() : config.ollamaEndpoint;
+        const model = isCloud ? config.ollamaCloudModel : config.ollamaLocalModel;
+        const response = await fetch(`${endpoint}/ollama/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model,
-            messages: [{ role: 'user', content: testPrompt }],
+            prompt: testPrompt,
             stream: false,
           }),
         });
@@ -1584,19 +1583,22 @@ const App: React.FC = () => {
                       </>
                     ) : (
                       <div className="space-y-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-slate-400">Облачная модель</label>
-                          <select value={dbConfig.llm.ollamaCloudModel} onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudModel: e.target.value}})} className="w-full bg-white border p-2 rounded-lg text-sm font-bold outline-none">
-                            {LLM_MODELS.ollama_cloud.map(m => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
-                          <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
-                        </div>
-                      </div>
+                         <div className="space-y-1">
+                           <label className="text-[10px] font-black uppercase text-slate-400">Облачная модель</label>
+                           <select value={dbConfig.llm.ollamaCloudModel} onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudModel: e.target.value}})} className="w-full bg-white border p-2 rounded-lg text-sm font-bold outline-none">
+                             {LLM_MODELS.ollama_cloud.map(m => (
+                               <option key={m.id} value={m.id}>{m.name}</option>
+                             ))}
+                           </select>
+                         </div>
+                         <div className="p-3 bg-blue-50 text-blue-700 text-xs rounded-xl font-medium border border-blue-100">
+                           ℹ️ API ключ хранится на сервере. Для настройки обратитесь к администратору.
+                         </div>
+                         <div className="flex gap-2">
+                           <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
+                           <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
+                         </div>
+                       </div>
                     )}
                     {llmStatus && (
                       <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>

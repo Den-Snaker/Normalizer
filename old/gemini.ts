@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { EquipmentCategory, DictionaryField, EquipmentItem, OrderMetadata, LLMConfig } from "../types";
-import { getDbConfig } from "./db";
+import { EquipmentCategory, DictionaryField, EquipmentItem, OrderMetadata, LLMConfig, Characteristic } from "./types";
+import { getDbConfig, getApiUrl } from "./db";
 import { addLog } from "./logger";
 
 // Helper for generic token usage format
@@ -242,10 +242,21 @@ async function generateOpenRouter(prompt: string, config: LLMConfig, options?: G
 }
 
 async function generateOllama(prompt: string, config: LLMConfig, options?: GenerateOptions): Promise<LLMResponse> {
-  let endpoint = config.ollamaEndpoint || 'http://localhost:11434';
-  if (endpoint.endsWith('/')) endpoint = endpoint.slice(0, -1);
-  const modelName = config.ollamaMode === 'local' ? config.ollamaLocalModel : config.ollamaCloudModel;
-
+  const isCloud = config.ollamaMode === 'cloud';
+  
+  let endpoint: string;
+  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  
+  if (isCloud) {
+    // Для облачного Ollama используем backend прокси (API ключ хранится на сервере)
+    endpoint = getApiUrl();
+  } else {
+    // Для локального Ollama - прямой запрос
+    endpoint = config.ollamaEndpoint || 'http://localhost:11434';
+    if (endpoint.endsWith('/')) endpoint = endpoint.slice(0, -1);
+  }
+  
+  const modelName = isCloud ? config.ollamaCloudModel : config.ollamaLocalModel;
   const fullPrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
 
   const body: any = {
@@ -261,26 +272,26 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
     body.format = 'json';
   }
 
-  if (options?.inlineData && config.ollamaMode === 'local') {
+  if (options?.inlineData && !isCloud) {
     body.images = [options.inlineData.data];
   }
 
-  const response = await fetch(`${endpoint}/api/generate`, {
+  const response = await fetch(`${endpoint}/ollama/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body)
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Ollama Error ${response.status}: ${errText}`);
+    throw new Error(`Ошибка от ollama: ${errText || response.status}`);
   }
 
   const data = await response.json();
   
   return {
     text: data.response || "",
-    tokenUsage: formatOllamaTokenUsage(data)
+    tokenUsage: data.token_usage || formatOllamaTokenUsage(data)
   };
 }
 

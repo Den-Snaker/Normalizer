@@ -57,6 +57,7 @@ export interface DBConfig {
     ollamaLocalModel: string;
     ollamaLocalModels: string[];
     ollamaCloudModel: string;
+    ollamaCloudApiKey: string;
     ollamaEndpoint: string;
   };
 }
@@ -89,6 +90,7 @@ const DEFAULT_CONFIG: DBConfig = {
     ollamaLocalModel: 'llama3.1',
     ollamaLocalModels: ['llama3.1'],
     ollamaCloudModel: 'glm-5',
+    ollamaCloudApiKey: '',
     ollamaEndpoint: 'http://localhost:11434'
   }
 };

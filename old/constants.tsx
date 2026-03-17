@@ -81,13 +81,25 @@ export const LLM_MODELS = {
   
   ollama_cloud: [
     { id: 'glm-5', name: 'GLM-5 (744B)' },
-    { id: 'qwen3.5', name: 'Qwen 3.5 (397B MoE)' },
+    { id: 'qwen3.5', name: 'Qwen 3.5' },
     { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next' },
-    { id: 'minimax-m2.5', name: 'MiniMax M2.5' },
-    { id: 'kimi-k2.5', name: 'Kimi K2.5' },
+    { id: 'qwen3-vl', name: 'Qwen 3 VL (Vision)' },
+    { id: 'qwen3-next', name: 'Qwen3 Next (80B)' },
     { id: 'devstral-2', name: 'Devstral 2 (123B)' },
     { id: 'devstral-small-2', name: 'Devstral Small 2 (24B)' },
+    { id: 'nemotron-3-super', name: 'Nemotron 3 Super (120B)' },
+    { id: 'nemotron-3-nano', name: 'Nemotron 3 Nano' },
+    { id: 'minimax-m2.5', name: 'MiniMax M2.5' },
+    { id: 'minimax-m2', name: 'MiniMax M2' },
+    { id: 'minimax-m2.1', name: 'MiniMax M2.1' },
+    { id: 'kimi-k2.5', name: 'Kimi K2.5' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
+    { id: 'deepseek-v3.2', name: 'DeepSeek V3.2' },
+    { id: 'glm-4.7', name: 'GLM 4.7' },
+    { id: 'glm-4.6', name: 'GLM 4.6' },
+    { id: 'cogito-2.1', name: 'Cogito 2.1 (671B)' },
+    { id: 'ministral-3', name: 'Ministral 3' },
+    { id: 'rnj-1', name: 'Rnj-1 (8B)' },
   ],
   
   ollama_local_popular: [

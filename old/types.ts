@@ -73,6 +73,7 @@ export interface LLMConfig {
   ollamaLocalModel: string;
   ollamaLocalModels: string[];
   ollamaCloudModel: string;
+  ollamaCloudApiKey: string;
   ollamaEndpoint: string;
 }
 

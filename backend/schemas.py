@@ -147,3 +147,15 @@ class ScannedCodeCreate(BaseModel):
     item_name: Optional[str] = None
     status: str = "found"
     characteristics: Optional[dict] = None
+
+
+class OllamaRequest(BaseModel):
+    model: str
+    prompt: str
+    stream: bool = False
+    options: Optional[Dict[str, Any]] = None
+
+
+class OllamaResponse(BaseModel):
+    response: str
+    token_usage: Optional[str] = None

@@ -13,3 +13,4 @@ aiofiles==24.1.0
 pydantic==2.10.0
 pydantic-settings==2.6.0
 beautifulsoup4==4.12.3
+httpx==0.28.1
