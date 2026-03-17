@@ -1,0 +1,1 @@
+powershell -Command "Start-Process -WindowStyle Hidden -FilePath 'D:\Opencode\OpenCode_models\Normalize\backend\venv\Scripts\python.exe' -ArgumentList '-m','uvicorn','main:app','--host','127.0.0.1','--port','8000','--app-dir','D:\Opencode\OpenCode_models\Normalize\backend'"

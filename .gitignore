@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+
+# Build outputs
+dist/
+build/
+*.egg
+
+# Environment & secrets
+.env
+.deploy/
+*.pem
+*.key
+
+# Logs & temp
+*.log
+app_logs.jsonl
+nul
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temp files
+*.tmp
+*.temp
+test_file.txt
+_docx_text.txt
+_ktru*.html
+OpenCode_context_*.html
+
+# Docs (optional - uncomment if needed)
+# Описание*.docx
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage
+coverage/
+.coverage
+htmlcov/

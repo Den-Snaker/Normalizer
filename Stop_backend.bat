@@ -1,0 +1,1 @@
+powershell -Command "& { Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Normalize\\backend\\venv*' } | ForEach-Object { Stop-Process -Id $_.Id -Force } }"

@@ -1,0 +1,5 @@
+{
+  "name": "Нормализатор заказов по КТРУ",
+  "description": "An intelligent tool to process unstructured IT equipment requests, categorize them by KTRU/OKPD2 standards, and export structured data into a multi-sheet Excel file.",
+  "requestFramePermissions": []
+}
