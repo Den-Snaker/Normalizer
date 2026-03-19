@@ -80,18 +80,31 @@ export const LLM_MODELS = {
   ],
   
   ollama_cloud: [
-    // Cloud-only models - verified working on ollama.com
+    // Cloud-only models - require size tag for some models
     { id: 'glm-5', name: 'GLM-5 (744B)', cloud: true },
     { id: 'glm-4.7', name: 'GLM 4.7', cloud: true },
     { id: 'glm-4.6', name: 'GLM 4.6', cloud: true },
     { id: 'qwen3.5', name: 'Qwen 3.5', cloud: true },
     { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', cloud: true },
+    { id: 'qwen3-vl:235b', name: 'Qwen 3 VL (235B)', cloud: true },
+    { id: 'qwen3-vl:32b', name: 'Qwen 3 VL (32B)', cloud: true },
+    { id: 'qwen3-vl:8b', name: 'Qwen 3 VL (8B)', cloud: true },
+    { id: 'qwen3-next:80b', name: 'Qwen3 Next (80B)', cloud: true },
+    { id: 'devstral-2:123b', name: 'Devstral 2 (123B)', cloud: true },
+    { id: 'devstral-small-2:24b', name: 'Devstral Small 2 (24B)', cloud: true },
     { id: 'minimax-m2.7', name: 'MiniMax M2.7', cloud: true },
     { id: 'minimax-m2.5', name: 'MiniMax M2.5', cloud: true },
     { id: 'minimax-m2', name: 'MiniMax M2', cloud: true },
     { id: 'kimi-k2.5', name: 'Kimi K2.5', cloud: true },
     { id: 'nemotron-3-super', name: 'Nemotron 3 Super (120B)', cloud: true },
+    { id: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano (30B)', cloud: true },
+    { id: 'nemotron-3-nano:4b', name: 'Nemotron 3 Nano (4B)', cloud: true },
+    { id: 'ministral-3:14b', name: 'Ministral 3 (14B)', cloud: true },
+    { id: 'ministral-3:8b', name: 'Ministral 3 (8B)', cloud: true },
+    { id: 'ministral-3:3b', name: 'Ministral 3 (3B)', cloud: true },
+    { id: 'rnj-1:8b', name: 'Rnj-1 (8B)', cloud: true },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', cloud: true },
+    { id: 'cogito-2.1:671b', name: 'Cogito 2.1 (671B)', cloud: true },
     { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', cloud: true },
   ],
   
