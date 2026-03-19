@@ -154,6 +154,7 @@ class OllamaRequest(BaseModel):
     prompt: str
     stream: bool = False
     options: Optional[Dict[str, Any]] = None
+    images: Optional[List[str]] = None
 
 
 class OllamaResponse(BaseModel):

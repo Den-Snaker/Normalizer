@@ -260,7 +260,14 @@ export const buildApiUrl = (config: DBConfig) => {
 };
 
 export const getApiUrl = () => {
-  const config = getDbConfig();
+  let config = getDbConfig();
+  
+  // Автоопределение хоста для production
+  const currentHost = window.location.hostname;
+  if (currentHost !== 'localhost' && currentHost !== '127.0.0.1' && config.host === 'localhost') {
+    config = { ...config, host: currentHost, port: '8000' };
+  }
+  
   const url = buildApiUrl(config);
   console.log('[getApiUrl] API URL:', url, 'config:', { host: config.host, port: config.port, useProxy: config.useProxy });
   return url;

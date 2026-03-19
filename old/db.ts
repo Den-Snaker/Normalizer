@@ -254,16 +254,14 @@ export const exportConfigToFile = (config: DBConfig) => {
 export const buildApiUrl = (config: DBConfig) => {
   const isBrowser = typeof window !== 'undefined';
   const browserHost = isBrowser ? window.location.hostname : '';
-  const browserPort = isBrowser
-    ? (window.location.port || (window.location.protocol === 'https:' ? '443' : '80'))
-    : '';
   const isLocalHost = ['localhost', '127.0.0.1'].includes(config.host);
   const isBrowserLocal = ['localhost', '127.0.0.1'].includes(browserHost);
 
+  // Автоопределение хоста и порта для production
   const resolvedHost = !config.host
     ? browserHost
     : (isLocalHost && !isBrowserLocal ? browserHost : config.host);
-  const resolvedPort = config.port || browserPort;
+  const resolvedPort = config.port || '8000';
 
   const baseUrl = `http://${resolvedHost}:${resolvedPort}`;
   if (config.useProxy) {

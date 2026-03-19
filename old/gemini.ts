@@ -1,11 +1,144 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { EquipmentCategory, DictionaryField, EquipmentItem, OrderMetadata, LLMConfig, Characteristic } from "./types";
+import { EquipmentCategory, DictionaryField, EquipmentItem, OrderMetadata, LLMConfig, Characteristic } from "../types";
 import { getDbConfig, getApiUrl } from "./db";
 import { addLog } from "./logger";
 
 // Helper for generic token usage format
 const formatTokenUsageString = (k: number, p: number, t: number, total: number) => {
   return `K_${k.toFixed(1)}+P_${p.toFixed(1)}+T_${t.toFixed(1)}=${total.toFixed(1)}`;
+};
+
+// Unit conversion factors (to base unit)
+// canonicalName = эталонное название единицы из справочника КТРУ
+const UNIT_CONVERSIONS: Record<string, { base: string; factor: number; aliases: string[]; canonicalName: string }> = {
+  'Гб': { base: 'Гб', factor: 1, aliases: ['гб', 'гигабайт', 'gb', 'gigabyte', 'гигабайта', 'гигабайтов', 'гбайт'], canonicalName: 'Гигабайт' },
+  'Мб': { base: 'Гб', factor: 1/1024, aliases: ['мб', 'мегабайт', 'mb', 'megabyte', 'мбайт'], canonicalName: 'Мегабайт' },
+  'Кб': { base: 'Гб', factor: 1/1024/1024, aliases: ['кб', 'килобайт', 'kb', 'kilobyte', 'кбайт'], canonicalName: 'Килобайт' },
+  'Тб': { base: 'Гб', factor: 1024, aliases: ['тб', 'терабайт', 'tb', 'terabyte', 'тбайт', 'тбайта'], canonicalName: 'Терабайт' },
+  'ГГц': { base: 'ГГц', factor: 1, aliases: ['ггц', 'гигагерц', 'ghz', 'gigahertz'], canonicalName: 'Гигагерц' },
+  'МГц': { base: 'ГГц', factor: 1/1000, aliases: ['мгц', 'мегагерц', 'mhz', 'megahertz'], canonicalName: 'Мегагерц' },
+  'КГц': { base: 'ГГц', factor: 1/1000000, aliases: ['кгц', 'килогерц', 'khz', 'kilohertz'], canonicalName: 'Килогерц' },
+  'Гц': { base: 'ГГц', factor: 1/1000000000, aliases: ['гц', 'герц', 'hz', 'hertz'], canonicalName: 'Герц' },
+  'Вт': { base: 'Вт', factor: 1, aliases: ['вт', 'ватт', 'w', 'watt', 'ватта'], canonicalName: 'Ватт' },
+  'кВт': { base: 'Вт', factor: 1000, aliases: ['квт', 'киловатт', 'kw', 'kilowatt'], canonicalName: 'киловатт' },
+  'ГВт': { base: 'Вт', factor: 1000000, aliases: ['гвт', 'гигаватт', 'gw', 'gigawatt'], canonicalName: 'Гигаватт' },
+  'МВт': { base: 'Вт', factor: 1000, aliases: ['мвт', 'мегаватт', 'mw', 'megawatt'], canonicalName: 'Мегаватт' },
+};
+
+const normalizeUnitName = (unit: string): string => {
+  const u = unit.toLowerCase().trim();
+  for (const [baseUnit, config] of Object.entries(UNIT_CONVERSIONS)) {
+    if (config.aliases.includes(u) || u === baseUnit.toLowerCase()) {
+      return baseUnit;
+    }
+  }
+  return unit.trim();
+};
+
+const getUnitConfig = (unit: string): { base: string; factor: number; canonicalName: string } | null => {
+  const normalized = normalizeUnitName(unit);
+  for (const [baseUnit, config] of Object.entries(UNIT_CONVERSIONS)) {
+    if (normalizeUnitName(baseUnit) === normalized) {
+      return { base: config.base, factor: config.factor, canonicalName: config.canonicalName };
+    }
+    for (const alias of config.aliases) {
+      if (normalizeUnitName(alias) === normalized) {
+        return { base: config.base, factor: config.factor, canonicalName: config.canonicalName };
+      }
+    }
+  }
+  return null;
+};
+
+const parseValueWithUnit = (raw: string): { value: number | null; unit: string; original: string } => {
+  const trimmed = (raw || '').toString().trim();
+  if (!trimmed) return { value: null, unit: '', original: trimmed };
+
+  const patterns = [
+    /^([><=≥≤~≈]+)?\s*([\d]+[.,]?\d*)\s*и\s*<\s*[\d]+[.,]?\d*\s*(.*)$/i,
+    /^([><=≥≤~≈]+)?\s*([\d]+[.,]?\d*)\s*–\s*[\d]+[.,]?\d*\s*(.*)$/i,
+    /^([\d]+[.,]?\d*)\s*и\s*<\s*[\d]+[.,]?\d*\s*(.*)$/i,
+    /^([\d]+[.,]?\d*)\s*–\s*[\d]+[.,]?\d*\s*(.*)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      const numStr = (match[2] || match[1]).replace(',', '.');
+      const num = parseFloat(numStr);
+      if (!isNaN(num)) {
+        const unit = (match[3] || match[2] || '').trim();
+        return { value: num, unit, original: trimmed };
+      }
+    }
+  }
+
+  const simpleMatch = trimmed.match(/^([\d]+[.,]?\d*)\s*(.*)$/);
+  if (simpleMatch) {
+    const numStr = simpleMatch[1].replace(',', '.');
+    const num = parseFloat(numStr);
+    if (!isNaN(num)) {
+      return { value: num, unit: simpleMatch[2].trim(), original: trimmed };
+    }
+  }
+
+  return { value: null, unit: '', original: trimmed };
+};
+
+const convertValueUnit = (
+  rawValue: string,
+  fieldName: string,
+  expectedUnit: string
+): string => {
+  if (!rawValue || !expectedUnit) return rawValue;
+
+  const parsed = parseValueWithUnit(rawValue);
+  if (parsed.value === null) return rawValue;
+
+  const srcConfig = getUnitConfig(parsed.unit);
+  const dstConfig = getUnitConfig(expectedUnit);
+
+  // Если не нашли конфигурацию - пробуем конвертировать по expectedUnit напрямую
+  if (!srcConfig || !dstConfig) {
+    // Проверяем, совпадает ли единица с expectedUnit (с учётом алиасов)
+    const normalizedUnit = parsed.unit.toLowerCase().trim();
+    const normalizedExpected = expectedUnit.toLowerCase().trim();
+    
+    // Если единицы совпадают - возвращаем с эталонным названием
+    if (normalizedUnit === normalizedExpected || 
+        normalizedUnit === normalizedExpected.replace(/[йаяов]/g, '') ||
+        normalizedExpected.includes(normalizedUnit) ||
+        normalizedUnit.includes(normalizedExpected.replace(/[йаяов]/g, ''))) {
+      // Ищем canonicalName для expectedUnit
+      for (const [, config] of Object.entries(UNIT_CONVERSIONS)) {
+        if (config.aliases.some(a => a.toLowerCase() === normalizedExpected) ||
+            config.canonicalName.toLowerCase() === normalizedExpected) {
+          return `${parsed.value} ${config.canonicalName}`;
+        }
+      }
+      // Если не нашли - возвращаем как есть с expectedUnit
+      return `${parsed.value} ${expectedUnit}`;
+    }
+    return rawValue;
+  }
+
+  if (srcConfig.base !== dstConfig.base) {
+    // Если базовые единицы разные - просто заменяем название на эталонное
+    return `${parsed.value} ${dstConfig.canonicalName}`;
+  }
+
+  if (srcConfig.factor === dstConfig.factor) {
+    // Единицы совпадают - просто заменяем название
+    return `${parsed.value} ${dstConfig.canonicalName}`;
+  }
+
+  // Конвертируем значение
+  const convertedValue = parsed.value * (srcConfig.factor / dstConfig.factor);
+  const roundedValue = Math.floor(convertedValue);
+
+  addLog('info', `[UnitConvert] ${fieldName}: "${rawValue}" -> ${roundedValue} ${dstConfig.canonicalName} (${parsed.value} × ${srcConfig.factor} / ${dstConfig.factor})`);
+
+  return `${roundedValue} ${dstConfig.canonicalName}`;
 };
 
 const formatGoogleTokenUsage = (response: GenerateContentResponse): string => {
@@ -272,7 +405,8 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
     body.format = 'json';
   }
 
-  if (options?.inlineData && !isCloud) {
+  // Изображения поддерживаются и в локальном, и в облачном режиме (через backend прокси)
+  if (options?.inlineData) {
     body.images = [options.inlineData.data];
   }
 
@@ -463,18 +597,38 @@ export const checkSemanticSimilarity = async (newName: string, existingNames: st
   });
 };
 
-const normalizeCharacteristicValue = (raw: string): string => {
+const normalizeCharacteristicValue = (raw: string, fieldName: string = ''): string => {
   const trimmed = (raw || '').toString().trim();
   if (!trimmed) return trimmed;
 
   let value = trimmed.replace(/^не\s+менее\s+/i, '').trim();
+  
   const resMatch = value.match(/(\d{3,5})\s*[xх×]\s*(\d{3,5})/i);
   if (resMatch) {
     value = `${resMatch[1]}x${resMatch[2]}`;
   }
 
+  const fieldLower = fieldName.toLowerCase();
+  if (fieldLower.includes('контрастность')) {
+    const contrastMatch = value.match(/^(\d{2,10})\s*(:\s*1)?$/);
+    if (contrastMatch) {
+      value = `${contrastMatch[1]}:1`;
+    }
+  }
+
   return value;
 };
+
+const normalizeExtractedItems = (items: EquipmentItem[]): EquipmentItem[] => {
+  return (items || []).map(item => ({
+    ...item,
+    characteristics: (item.characteristics || []).map(char => ({
+      ...char,
+      value: normalizeCharacteristicValue(char.value, char.name)
+    }))
+  }));
+};
+
 
 const normalizeName = (value: string) =>
   (value || '').toLowerCase().replace(/[^a-z0-9а-я]+/gi, ' ').trim().replace(/\s+/g, ' ');
@@ -490,8 +644,20 @@ const tokenSimilarity = (a: string, b: string) => {
 
 const mapCharacteristicsToDictionary = (
   items: EquipmentItem[],
-  dictByCat: Record<string, string[]>
+  dictionary: DictionaryField[]
 ): EquipmentItem[] => {
+  const dictByCat = dictionary.reduce((acc, curr) => {
+    if (!acc[curr.category]) acc[curr.category] = [];
+    acc[curr.category].push(curr.fieldName);
+    return acc;
+  }, {} as Record<string, string[]>);
+
+  const unitsByCatField = dictionary.reduce((acc, curr) => {
+    const key = `${curr.category}__${curr.fieldName}`;
+    if (curr.unit) acc[key] = curr.unit;
+    return acc;
+  }, {} as Record<string, string>);
+
   return (items || []).map(item => {
     const candidates = dictByCat[item.category] || [];
     const normalizedDict = new Map(
@@ -505,18 +671,24 @@ const mapCharacteristicsToDictionary = (
 
     (item.characteristics || []).forEach(char => {
       const rawName = char.name || '';
-      const normalizedValue = normalizeCharacteristicValue(char.value);
+      const normalizedValue = normalizeCharacteristicValue(char.value, rawName);
       const target = normalizeName(rawName);
       const exactName = normalizedDict.get(target);
 
       if (exactName) {
+        const dictKey = `${item.category}__${exactName}`;
+        const expectedUnit = unitsByCatField[dictKey] || '';
+        const convertedValue = expectedUnit 
+          ? convertValueUnit(normalizedValue, exactName, expectedUnit)
+          : normalizedValue;
+
         if (!mapped[exactName]) {
           mapped[exactName] = {
             name: exactName,
-            value: normalizedValue
+            value: convertedValue
           };
-        } else if (normalizedValue && normalizedValue.length > mapped[exactName].value.length) {
-          mapped[exactName].value = normalizedValue;
+        } else if (convertedValue && convertedValue.length > mapped[exactName].value.length) {
+          mapped[exactName].value = convertedValue;
         }
         return;
       }
@@ -542,14 +714,20 @@ const mapCharacteristicsToDictionary = (
 
       if (bestCandidate && bestCandidate.score >= 0.65) {
         const matchedName = bestCandidate.field;
+        const dictKey = `${item.category}__${matchedName}`;
+        const expectedUnit = unitsByCatField[dictKey] || '';
+        const convertedValue = expectedUnit 
+          ? convertValueUnit(normalizedValue, matchedName, expectedUnit)
+          : normalizedValue;
+
         if (!mapped[matchedName]) {
           mapped[matchedName] = {
             name: matchedName,
-            value: normalizedValue,
+            value: convertedValue,
             originalName: rawName
           };
-        } else if (normalizedValue && normalizedValue.length > mapped[matchedName].value.length) {
-          mapped[matchedName].value = normalizedValue;
+        } else if (convertedValue && convertedValue.length > mapped[matchedName].value.length) {
+          mapped[matchedName].value = convertedValue;
         }
         return;
       }
@@ -574,7 +752,7 @@ const mapCharacteristicsToDictionary = (
 export const extractDataWithSchema = async (
   input: string | { data: string; mimeType: string },
   dictionary: DictionaryField[],
-  modelName?: string, // legacy parameter, no longer used directly as we rely on config
+  modelName?: string,
   onRetry?: (msg: string) => void
 ): Promise<{ items: EquipmentItem[], metadata: OrderMetadata, tokenUsage: string }> => {
   const dictByCat = dictionary.reduce((acc, curr) => {
@@ -627,19 +805,59 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
       }
     };
 
+    // Ограничиваем размер справочника для prompt (максимум 50 характеристик на категорию)
+    const limitedDictByCat: Record<string, string[]> = {};
+    for (const [cat, fields] of Object.entries(dictByCat)) {
+      limitedDictByCat[cat] = (fields as string[]).slice(0, 50);
+    }
+    
+    const dictJson = JSON.stringify(limitedDictByCat);
+    const dictSizeKB = Math.round(dictJson.length / 1024);
+    console.log(`[extractDataWithSchema] Справочник: ${Object.keys(limitedDictByCat).length} категорий, ~${dictSizeKB}KB`);
+    
     const options: GenerateOptions = {
       jsonMode: true,
       schema,
-      systemPrompt: `Ты — эксперт по закупкам ИТ-оборудования в РФ. Извлеки данные.
-Правила:
-1) Определи категорию каждого товара из списка
-2) Используй ТОЛЬКО характеристики из справочника КТРУ для выбранной категории
-3) Если точного соответствия нет — выбери НАИБОЛЕЕ подходящий логически признак из справочника
-4) Указывай только признаки со значениями, найденные в документе
-5) Если рядом со значением есть единица измерения (Гб, Мб, Кб, Тб, Герц, МГц, MHz, GHz, Вт, Ватт, kW и т.д.) — включай ее в значение
-6) Если значение содержит "не менее" — опусти эту фразу
-7) Разрешение формата 1920x1080 сохраняй в таком же виде
-Отвечай строго в формате JSON, соответствующем заданной схеме. Не добавляй markdown \`\`\`json.`
+      systemPrompt: `Ты — эксперт по закупкам ИТ-оборудования в РФ. Извлеки данные из документа.
+
+ПРАВИЛА ДЛЯ ИНН:
+- Ищи ИНН ТОЛЬКО в самом документе (шапка, реквизиты, подписи)
+- ИНН = ровно 10 цифр (организация) или 12 цифр (ИП)
+- Если ИНН не найден — ставь пустую строку ""
+- НЕ ВЫДУМЫВАЙ ИНН!
+
+ПРАВИЛА ДЛЯ ХАРАКТЕРИСТИК:
+1. Сопоставляй названия из документа с названиями из справочника КТРУ
+2. Если похожее название есть в справочнике — используй его точное название
+3. Если точного соответствия нет — выбери наиболее подходящее по смыслу
+4. Если совсем нет подходящего — используй точное название из документа
+
+СПРАВОЧНИК КТРУ (${Object.keys(limitedDictByCat).length} категорий):
+${dictJson}
+
+ПРАВИЛА ДЛЯ КАТЕГОРИЙ:
+- Выбери одну категорию: ${Object.keys(limitedDictByCat).join(', ')}
+
+Формат ответа (строгий JSON):
+{
+  "metadata": {
+    "customerName": "название из документа",
+    "customerInn": "10 или 12 цифр или пусто",
+    "customerAddress": "адрес",
+    "otherDetails": "",
+    "docDate": "дата"
+  },
+  "items": [
+    {
+      "category": "категория из справочника",
+      "name": "наименование товара",
+      "quantity": 1,
+      "characteristics": [
+        {"name": "название из справочника КТРУ", "value": "значение"}
+      ]
+    }
+  ]
+}`
     };
 
     if (typeof input !== 'string') {
@@ -713,19 +931,44 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
           const quantity = Number(item.quantity || item['Количество'] || item['Кол-во'] || 1);
 
           let characteristics: { name: string; value: string }[] = [];
-          const rawChars = item.characteristics || item['Характеристики'] || item['Параметры'] || item['Технические характеристики'] || {};
+          const rawChars = item.characteristics
+            || item['Характеристики']
+            || item['Параметры']
+            || item['Технические характеристики']
+            || item['Технические характеристики, данные']
+            || {};
+
           if (Array.isArray(rawChars)) {
             characteristics = rawChars.map((c: any) => ({
-              name: c?.name || c?.['Наименование'] || '',
-              value: c?.value || c?.['Значение'] || ''
+              name: c?.name || c?.['Наименование'] || c?.['Параметр'] || c?.['Запрашиваемые данные'] || '',
+              value: c?.value || c?.['Значение'] || c?.['Технические характеристики, данные'] || ''
             })).filter(c => c.name);
           } else if (rawChars && typeof rawChars === 'object') {
-            characteristics = Object.entries(rawChars).map(([k, v]) => ({ name: k, value: String(v ?? '') })).filter(c => c.name);
+            characteristics = Object.entries(rawChars)
+              .map(([k, v]) => ({ name: k, value: String(v ?? '') }))
+              .filter(c => c.name);
+          }
+
+          if (characteristics.length === 0) {
+            const entry = Object.entries(item).find(([k]) => /характеристик/i.test(k));
+            if (entry) {
+              const [, value] = entry;
+              if (Array.isArray(value)) {
+                characteristics = value.map((c: any) => ({
+                  name: c?.name || c?.['Наименование'] || c?.['Параметр'] || c?.['Запрашиваемые данные'] || '',
+                  value: c?.value || c?.['Значение'] || ''
+                })).filter(c => c.name);
+              } else if (value && typeof value === 'object') {
+                characteristics = Object.entries(value)
+                  .map(([k, v]) => ({ name: k, value: String(v ?? '') }))
+                  .filter(c => c.name);
+              }
+            }
           }
 
           if (characteristics.length === 0) {
             characteristics = Object.entries(item)
-              .filter(([k]) => !['name','category','quantity','items','metadata','Наименование','Название','Категория','Количество','Кол-во','Наименование объекта закупки'].includes(k))
+              .filter(([k]) => !['name','category','quantity','items','metadata','Наименование','Название','Категория','Количество','Кол-во','Наименование объекта закупки','Наименование товара','Наименование продукции','Наименование предмета закупки'].includes(k))
               .map(([k, v]) => ({ name: k, value: String(v ?? '') }))
               .filter(c => c.name && c.value !== '');
           }
@@ -743,10 +986,18 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
 
     parsed.items = (parsed.items || []).filter((item: any) => item?.name);
 
+    const normalizedMetadata = {
+      customerName: parsed.metadata?.customerName || parsed.metadata?.customer_name || '',
+      customerInn: parsed.metadata?.customerInn || parsed.metadata?.customer_inn || '',
+      customerAddress: parsed.metadata?.customerAddress || parsed.metadata?.customer_address || '',
+      otherDetails: parsed.metadata?.otherDetails || parsed.metadata?.other_details || '',
+      docDate: parsed.metadata?.docDate || parsed.metadata?.doc_date || ''
+    };
+
     return {
-      items: mapCharacteristicsToDictionary(parsed.items || [], dictByCat),
+      items: mapCharacteristicsToDictionary(parsed.items || [], dictionary),
       metadata: {
-        ...parsed.metadata,
+        ...normalizedMetadata,
         processingId: Math.random().toString(36).substr(2, 9),
         timestamp: Date.now(),
         tokenUsage: res.tokenUsage
@@ -757,20 +1008,117 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
 };
 
 export const enrichItemWithKtru = async (item: EquipmentItem) => {
+  const CATEGORY_KTRU_INDICES: Record<string, string> = {
+    'Сервер': '26.20.14.000-00000001',
+    'ПК': '26.20.15.000-00000001',
+    'Мониторы': '26.20.17.110-00000001',
+    'Моноблоки': '26.20.15.000-00000032',
+    'Ноутбуки': '26.20.11.110-00000001',
+    'Планшеты': '26.20.11.110-00000160',
+    'МФУ': '26.20.18.000-00000001',
+    'Принтеры': '26.20.16.120-00000001',
+    'Клавиатура': '26.20.16.110-00000001',
+    'Мышь': '26.20.16.170-00000001',
+    'Маршрутизатор': '26.30.11.120-00000001',
+    'Коммутатор': '26.30.11.110-00000001',
+    'ИБП': '26.20.40.110-00000001',
+    'Прочее': '0.0.0'
+  };
+
+  const CATEGORY_KTRU_PREFIX: Record<string, string> = {
+    'Сервер': '26.20.14',
+    'ПК': '26.20.15',
+    'Мониторы': '26.20.17',
+    'Моноблоки': '26.20.15',
+    'Ноутбуки': '26.20.11',
+    'Планшеты': '26.20.11',
+    'МФУ': '26.20.18',
+    'Принтеры': '26.20.16',
+    'Клавиатура': '26.20.16',
+    'Мышь': '26.20.16',
+    'Маршрутизатор': '26.30.11',
+    'Коммутатор': '26.30.11',
+    'ИБП': '26.20.40',
+    'Прочее': ''
+  };
+
+  const defaultKtru = CATEGORY_KTRU_INDICES[item.category];
+  const ktruPrefix = CATEGORY_KTRU_PREFIX[item.category];
+
+  const nameLower = (item.name || '').toLowerCase();
+  const isMonoblock = nameLower.includes('моноблок') || 
+                      nameLower.includes('моноблочн') ||
+                      nameLower.includes('all-in-one') ||
+                      nameLower.includes('aio ') ||
+                      /\b aio\b/i.test(item.name);
+  
+  if (item.category === 'Моноблоки' || (item.category === 'ПК' && isMonoblock)) {
+    const monoblockKtru = CATEGORY_KTRU_INDICES['Моноблоки'];
+    addLog('info', `[KTRU] Моноблок определён`, { name: item.name, category: item.category, code: monoblockKtru });
+    return { ktruCode: monoblockKtru, tokenUsage: "K_0.0+P_0.0+T_0.0=0.0" };
+  }
+
+  if (!ktruPrefix || item.category === 'Прочее') {
+    return withRetry(async () => {
+      const res = await generateCompletion(
+        `Найди актуальный код КТРУ для устройства: ${item.name}. В ответе только код в JSON {"ktruCode":"xxx"}.`,
+        {
+          jsonMode: true,
+          schema: {
+            type: Type.OBJECT,
+            properties: { ktruCode: { type: Type.STRING } }
+          }
+        }
+      );
+      let data = { ktruCode: "" };
+      try { data = JSON.parse(res.text); } catch (e) { /* ignore */ }
+      return { ktruCode: data.ktruCode || "", tokenUsage: res.tokenUsage };
+    });
+  }
+
   return withRetry(async () => {
     const res = await generateCompletion(
-      `Найди актуальный код КТРУ для устройства: ${item.name}. В ответе только код в JSON {"ktruCode":"xxx"}.`,
+      `Найди точный код КТРУ для устройства: "${item.name}"
+Категория: "${item.category}"
+КТРУ этой категории должны начинаться с: "${ktruPrefix}"
+Справочник КТРУ: https://zakupki.gov.ru/epz/ktru/ktruCard/ktru-description.html
+
+Найди на сайте каталога КТРУ точный код, который начинается с ${ktruPrefix}.
+Если устройство "${item.name}" — это ${item.category}, то код должен быть из группы ${ktruPrefix}.xxx.
+
+Важно: моноблоки (моноблочные ПК) имеют код 26.20.15.000-00000032, а обычные настольные ПК — 26.20.15.000-00000001.
+
+Верни JSON с точным кодом: {"ktruCode":"xxx"}`,
       {
         jsonMode: true,
         schema: {
           type: Type.OBJECT,
           properties: { ktruCode: { type: Type.STRING } }
-        }
+        },
+        useGrounding: getDbConfig().llm.provider === 'google'
       }
     );
     let data = { ktruCode: "" };
-    try { data = JSON.parse(res.text); } catch (e) { /* ignore */ }
-    return { ktruCode: data.ktruCode || "", tokenUsage: res.tokenUsage };
+    try { 
+      data = JSON.parse(res.text); 
+    } catch (e) { /* ignore */ }
+    
+    let code = data.ktruCode || "";
+    
+    if (code && ktruPrefix) {
+      const codePrefix = code.split('.')[0] + '.' + code.split('.')[1] + '.' + code.split('.')[2];
+      if (codePrefix !== ktruPrefix) {
+        console.warn(`[KTRU] Код ${code} не соответствует категории ${item.category}, ожидается префикс ${ktruPrefix}. Использую дефолт.`);
+        code = defaultKtru || code;
+      }
+    }
+    
+    if (!code && defaultKtru) {
+      code = defaultKtru;
+    }
+    
+    addLog('info', `[KTRU] Код найден`, { name: item.name, category: item.category, code, defaultCode: defaultKtru });
+    return { ktruCode: code, tokenUsage: res.tokenUsage };
   });
 };
 

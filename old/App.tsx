@@ -149,6 +149,8 @@ const App: React.FC = () => {
 
   // KTRU Scanner State
   const [scanGroupCode, setScanGroupCode] = useState('26.20.15.000');
+  const [scanGroupCodeCustom, setScanGroupCodeCustom] = useState('');
+  const [useCustomGroupCode, setUseCustomGroupCode] = useState(false);
   const [scanStart, setScanStart] = useState(1);
   const [scanEnd, setScanEnd] = useState(99);
   const [scanRequestsPerSecond, setScanRequestsPerSecond] = useState(0.5);
@@ -211,7 +213,7 @@ const App: React.FC = () => {
 
   const loadScannedCodes = async () => {
     try {
-      const apiUrl = getDbConfig().apiUrl || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/ktru/scanned-codes?limit=1000`);
       if (response.ok) {
         const data = await response.json();
@@ -236,14 +238,22 @@ const App: React.FC = () => {
     setScanProgress({ current: 0, total: totalItems, status: `Ожидайте ~${estimatedTime} мин. Проверка ${totalItems} кодов...` });
 
     try {
-      const apiUrl = getDbConfig().apiUrl || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       
       // Создаём AbortController для timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 минут максимум
       
+      const groupCode = useCustomGroupCode ? scanGroupCodeCustom : scanGroupCode;
+      
+      if (!groupCode || groupCode.trim() === '') {
+        setScanProgress({ current: 0, total: 0, status: 'Введите код группы КТРУ' });
+        setIsScanning(false);
+        return;
+      }
+      
       const response = await fetch(
-        `${apiUrl}/ktru/scan?group_code=${encodeURIComponent(scanGroupCode)}&start=${scanStart}&end=${scanEnd}&requests_per_second=${scanRequestsPerSecond}&pause_seconds=${scanPauseSeconds}&save=false`,
+        `${apiUrl}/ktru/scan?group_code=${encodeURIComponent(groupCode)}&start=${scanStart}&end=${scanEnd}&requests_per_second=${scanRequestsPerSecond}&pause_seconds=${scanPauseSeconds}&save=false`,
         { signal: controller.signal }
       );
       
@@ -256,7 +266,7 @@ const App: React.FC = () => {
       const data = await response.json();
       setScanResults(data.results || []);
       setScanProgress({ current: data.total_checked, total: data.total_checked, status: `Готово. Найдено: ${data.found_count}` });
-      addLog('info', `[Scanner] Сканирование завершено`, { group: scanGroupCode, found: data.found_count, errors: data.errors_count });
+      addLog('info', `[Scanner] Сканирование завершено`, { group: groupCode, found: data.found_count, errors: data.errors_count });
     } catch (e: any) {
       if (e.name === 'AbortError') {
         setScanProgress({ current: 0, total: 0, status: 'Превышено время ожидания (10 мин)' });
@@ -276,13 +286,15 @@ const App: React.FC = () => {
       return;
     }
 
+    const groupCode = useCustomGroupCode ? scanGroupCodeCustom : scanGroupCode;
+
     try {
-      const apiUrl = getDbConfig().apiUrl || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/ktru/scanned-codes/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(scanResults.map(r => ({
-          group_code: scanGroupCode,
+          group_code: groupCode,
           item_id: r.item_id,
           item_name: r.name,
           status: r.status
@@ -307,7 +319,7 @@ const App: React.FC = () => {
     if (!confirm('Удалить все сканированные коды из базы данных?')) return;
 
     try {
-      const apiUrl = getDbConfig().apiUrl || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       await fetch(`${apiUrl}/ktru/scanned-codes`, { method: 'DELETE' });
       setScannedCodesCount(0);
       alert('Сканированные коды удалены');
@@ -318,7 +330,7 @@ const App: React.FC = () => {
 
   const handleExportScannedCodesToExcel = async () => {
     try {
-      const apiUrl = getDbConfig().apiUrl || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/ktru/scanned-codes/export`);
       
       if (!response.ok) {
@@ -1178,23 +1190,47 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400">Группа КТРУ</label>
-                      <select 
-                        value={scanGroupCode} 
-                        onChange={e => setScanGroupCode(e.target.value)}
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold focus:border-indigo-500 outline-none transition-all"
-                      >
-                        <option value="26.20.14.000">26.20.14.000 — Сервер</option>
-                        <option value="26.20.15.000">26.20.15.000 — ПК и Моноблоки</option>
-                        <option value="26.20.17.110">26.20.17.110 — Мониторы</option>
-                        <option value="26.20.11.110">26.20.11.110 — Ноутбуки/Планшеты</option>
-                        <option value="26.20.18.000">26.20.18.000 — МФУ</option>
-                        <option value="26.20.16.120">26.20.16.120 — Принтеры</option>
-                        <option value="26.20.16.110">26.20.16.110 — Клавиатуры</option>
-                        <option value="26.20.16.170">26.20.16.170 — Мышь</option>
-                        <option value="26.30.11.120">26.30.11.120 — Маршрутизаторы</option>
-                        <option value="26.30.11.110">26.30.11.110 — Коммутаторы</option>
-                        <option value="26.20.40.110">26.20.40.110 — ИБП</option>
-                      </select>
+                      <div className="flex gap-2 mb-2">
+                        <button
+                          onClick={() => setUseCustomGroupCode(false)}
+                          className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition-all ${!useCustomGroupCode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                          Из списка
+                        </button>
+                        <button
+                          onClick={() => setUseCustomGroupCode(true)}
+                          className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition-all ${useCustomGroupCode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                          Вручную
+                        </button>
+                      </div>
+                      {!useCustomGroupCode ? (
+                        <select 
+                          value={scanGroupCode} 
+                          onChange={e => setScanGroupCode(e.target.value)}
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold focus:border-indigo-500 outline-none transition-all"
+                        >
+                          <option value="26.20.14.000">26.20.14.000 — Сервер</option>
+                          <option value="26.20.15.000">26.20.15.000 — ПК и Моноблоки</option>
+                          <option value="26.20.17.110">26.20.17.110 — Мониторы</option>
+                          <option value="26.20.11.110">26.20.11.110 — Ноутбуки/Планшеты</option>
+                          <option value="26.20.18.000">26.20.18.000 — МФУ</option>
+                          <option value="26.20.16.120">26.20.16.120 — Принтеры</option>
+                          <option value="26.20.16.110">26.20.16.110 — Клавиатуры</option>
+                          <option value="26.20.16.170">26.20.16.170 — Мышь</option>
+                          <option value="26.30.11.120">26.30.11.120 — Маршрутизаторы</option>
+                          <option value="26.30.11.110">26.30.11.110 — Коммутаторы</option>
+                          <option value="26.20.40.110">26.20.40.110 — ИБП</option>
+                        </select>
+                      ) : (
+                        <input 
+                          type="text" 
+                          value={scanGroupCodeCustom} 
+                          onChange={e => setScanGroupCodeCustom(e.target.value)}
+                          placeholder="XX.XX.XX.XXX"
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold focus:border-indigo-500 outline-none transition-all font-mono"
+                        />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400">От номера</label>
