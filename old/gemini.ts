@@ -184,17 +184,35 @@ async function withRetry<T>(fn: () => Promise<T>, onRetry?: (attempt: number) =>
          throw new Error("Ошибка 400: Неверный формат файла или поврежденные данные.");
       }
 
-      // Если 503 или 429
-      if (errorMsg.includes('503') || errorMsg.includes('429') || errorMsg.includes('QUOTA_EXCEEDED') || errorMsg.includes('UNAVAILABLE')) {
+      // 429 Rate Limit - извлекаем время ожидания из сообщения
+      if (errorMsg.includes('429') || errorMsg.includes('QUOTA_EXCEEDED') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+        // Извлекаем retryDelay из сообщения Google: "Please retry in 34s"
+        const retryMatch = errorMsg.match(/retry in ([\d.]+)s|retryDelay":"(\d+)s/);
+        const retrySeconds = retryMatch ? parseFloat(retryMatch[1] || retryMatch[2]) : 35;
+        
+        if (i < maxRetries - 1) {
+          const waitMs = (retrySeconds + 5) * 1000; // +5 сек запас
+          console.log(`[withRetry] Rate limit, ожидание ${waitMs/1000}с (попытка ${i+1}/${maxRetries})`);
+          if (onRetry) onRetry(i + 1);
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+          continue;
+        }
         throw new Error(
-          `⚠️ Выбранная AI модель временно недоступна (перегружена или лимит запросов).\n\n` +
-          `Пожалуйста, перейдите в Настройки и выберите другого провайдера или модель.`
+          `⚠️ Превышен лимит запросов Google Gemini.\n\n` +
+          `Бесплатный тариф: 250K tokens/мин, 5 запросов/мин.\n\n` +
+          `Варианты решения:\n` +
+          `1. Использовать платный API ключ Google\n` +
+          `2. Переключиться на OpenRouter (Провайдер → OpenRouter → Gemini 3 Flash)\n` +
+          `3. Обрабатывать файлы по одному с интервалом`
         );
       }
 
+      // Internal Server Error (5xx) - retry
+      const is5xxError = errorMsg.includes('500') || errorMsg.includes('Internal Server Error') || errorMsg.includes('ref:');
       const isNetworkError = errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('fetch');
       
-      if (isNetworkError && i < maxRetries - 1) {
+      if ((is5xxError || isNetworkError) && i < maxRetries - 1) {
+        console.log(`[withRetry] Попытка ${i + 1} не удалась, повтор через ${delay}мс:`, errorMsg.substring(0, 100));
         if (onRetry) onRetry(i + 1);
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2;
@@ -255,21 +273,48 @@ async function generateCompletion(
   }
 }
 
+// Rate limiter для Google Gemini Free Tier (для платного аккаунта можно отключить)
+let lastGeminiRequestTime = 0;
+const GEMINI_MIN_INTERVAL_MS = process.env.GEMINI_FREE_TIER ? 2000 : 500; // 500ms для платного
+
 async function generateGoogle(prompt: string, config: LLMConfig, options?: GenerateOptions): Promise<LLMResponse> {
   const apiKey = config.googleApiKey || process.env.API_KEY || '';
   if (!apiKey) throw new Error("API key is missing. Please provide a valid API key in settings or .env.local");
+  
+  // Rate limiting (минимум для платного аккаунта)
+  const timeSinceLastRequest = Date.now() - lastGeminiRequestTime;
+  if (timeSinceLastRequest < GEMINI_MIN_INTERVAL_MS) {
+    const waitTime = GEMINI_MIN_INTERVAL_MS - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  lastGeminiRequestTime = Date.now();
   
   const ai = new GoogleGenAI({ apiKey });
   const modelName = config.googleModel || 'gemini-3.1-pro-preview';
 
   const parts: any[] = [];
+  
+  // Gemini поддерживает только одно изображение за раз, отправляем первым
   if (options?.inlineData) {
-    parts.push({ inlineData: options.inlineData });
+    const imageData = Array.isArray(options.inlineData) ? options.inlineData[0] : options.inlineData;
+    if (imageData && imageData.data && imageData.mimeType) {
+      parts.push({ 
+        inlineData: { 
+          mimeType: imageData.mimeType, 
+          data: imageData.data 
+        } 
+      });
+    }
+    // Если несколько изображений, добавляем информацию о количестве
+    if (Array.isArray(options.inlineData) && options.inlineData.length > 1) {
+      console.log(`[Google] Sending ${options.inlineData.length} images, but Gemini only accepts 1 per request. Using first image.`);
+    }
   }
   parts.push({ text: prompt });
 
   const aiConfig: any = {
     temperature: options?.temperature ?? 0.7,
+    maxOutputTokens: 262144, // Максимальный лимит для больших документов
   };
 
   if (options?.systemPrompt) {
@@ -324,13 +369,23 @@ async function generateOpenRouter(prompt: string, config: LLMConfig, options?: G
   }
 
   if (options?.inlineData) {
-    messages.push({
-      role: 'user',
-      content: [
-        { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: `data:${options.inlineData.mimeType};base64,${options.inlineData.data}` } }
-      ]
-    });
+    // Поддержка массива изображений
+    const images = Array.isArray(options.inlineData) ? options.inlineData : [options.inlineData];
+    
+    const content: any[] = [{ type: "text", text: prompt }];
+    
+    for (const img of images) {
+      if (img && img.data && img.mimeType) {
+        content.push({
+          type: "image_url",
+          image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+        });
+      }
+    }
+    
+    messages.push({ role: 'user', content: content });
+    
+    console.log(`[OpenRouter] Sending ${images.length} image(s) with prompt`);
   } else {
     messages.push({ role: 'user', content: prompt });
   }
@@ -343,10 +398,6 @@ async function generateOpenRouter(prompt: string, config: LLMConfig, options?: G
 
   if (options?.jsonMode) {
     body.response_format = { type: 'json_object' };
-  }
-
-  if (options?.jsonMode) {
-    body.response_format = { type: "json_object" };
   }
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -405,9 +456,11 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
     body.format = 'json';
   }
 
-  // Изображения поддерживаются и в локальном, и в облачном режиме (через backend прокси)
+  // Изображения отправляем во все модели - если модель не поддерживает, вернёт ошибку
   if (options?.inlineData) {
-    body.images = [options.inlineData.data];
+    body.images = Array.isArray(options.inlineData) 
+      ? options.inlineData.map(img => img.data)
+      : [options.inlineData.data];
   }
 
   const response = await fetch(`${endpoint}/ollama/generate`, {
@@ -750,19 +803,39 @@ const mapCharacteristicsToDictionary = (
 };
 
 export const extractDataWithSchema = async (
-  input: string | { data: string; mimeType: string },
+  input: string | { data: string; mimeType: string } | { data: string; mimeType: string }[],
   dictionary: DictionaryField[],
   modelName?: string,
   onRetry?: (msg: string) => void
 ): Promise<{ items: EquipmentItem[], metadata: OrderMetadata, tokenUsage: string }> => {
+  const config = getDbConfig().llm;
+  const isOllamaCloud = config.provider === 'ollama' && config.ollamaMode === 'cloud';
+  
+  const inputImages = Array.isArray(input) ? input : (typeof input !== 'string' ? [input] : null);
+  
+  // Создаём справочник с единицами измерения
+  const dictByCatWithUnits: Record<string, { name: string; unit?: string }[]> = {};
   const dictByCat = dictionary.reduce((acc, curr) => {
     if (!acc[curr.category]) acc[curr.category] = [];
     acc[curr.category].push(curr.fieldName);
+    
+    // Добавляем в расширенный справочник с единицами
+    if (!dictByCatWithUnits[curr.category]) dictByCatWithUnits[curr.category] = [];
+    dictByCatWithUnits[curr.category].push({ 
+      name: curr.fieldName, 
+      unit: curr.unit 
+    });
     return acc;
   }, {} as Record<string, string[]>);
 
+  const inputDesc = typeof input === 'string' 
+    ? `Текст заказа: ${input}` 
+    : inputImages && inputImages.length > 1 
+      ? `[${inputImages.length} изображений страниц документа]`
+      : `[См. вложенное изображение/файл]`;
+
   const prompt = `Ты — эксперт по закупкам ИТ-оборудования в РФ. Извлеки данные из следующего документа:
-${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вложенное изображение/файл]`}
+${inputDesc}
 
 Используй словарь: ${JSON.stringify(dictByCat)}`;
 
@@ -807,11 +880,15 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
 
     // Ограничиваем размер справочника для prompt (максимум 50 характеристик на категорию)
     const limitedDictByCat: Record<string, string[]> = {};
+    const limitedDictWithUnits: Record<string, { name: string; unit?: string }[]> = {};
+    
     for (const [cat, fields] of Object.entries(dictByCat)) {
       limitedDictByCat[cat] = (fields as string[]).slice(0, 50);
+      limitedDictWithUnits[cat] = dictByCatWithUnits[cat].slice(0, 50);
     }
     
     const dictJson = JSON.stringify(limitedDictByCat);
+    const dictWithUnitsJson = JSON.stringify(limitedDictWithUnits, null, 2);
     const dictSizeKB = Math.round(dictJson.length / 1024);
     console.log(`[extractDataWithSchema] Справочник: ${Object.keys(limitedDictByCat).length} категорий, ~${dictSizeKB}KB`);
     
@@ -832,8 +909,41 @@ ${typeof input === 'string' ? `Текст заказа: ${input}` : `[См. вл
 3. Если точного соответствия нет — выбери наиболее подходящее по смыслу
 4. Если совсем нет подходящего — используй точное название из документа
 
-СПРАВОЧНИК КТРУ (${Object.keys(limitedDictByCat).length} категорий):
-${dictJson}
+ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
+1. Распознай единицу измерения в документе (ГБ, ТБ, МГц, ГГц, Вт, кВт и т.д.)
+2. Сравни с единицей измерения из справочника КТРУ для этой характеристики
+3. ЕСЛИ единицы СОВПАДАЮТ (например, "ГБ" в документе и "Гигабайт" в справочнике):
+   - Подставь единицу ИЗ СПРАВОЧНИКА КТРУ
+   - Значение оставь БЕЗ ИЗМЕНЕНИЙ
+   Пример: документ "500 ГБ", справочник "Гигабайт" → результат "500 Гигабайт"
+4. ЕСЛИ единицы ОТЛИЧАЮТСЯ (например, "ТБ" в документе и "Гигабайт" в справочнике):
+   - Подставь единицу ИЗ СПРАВОЧНИКА КТРУ
+   - Конвертируй значение: 1 ТБ = 1024 ГБ, 1 ГГц = 1000 МГц, 1 кВт = 1000 Вт
+   - Округляй ВВЕРХ до целого числа
+   Пример: документ "1,2 ТБ", справочник "Гигабайт" → результат "1229 Гигабайт"
+5. ЕСЛИ в справочнике НЕТ единицы измерения:
+   - Используй единицу измерения из документа
+   Пример: документ "3,5 ГГц", справочник "" (пусто) → результат "3,5 ГГц"
+
+ПРИМЕРЫ КОНВЕРТАЦИИ:
+- "1,2 ТБ" в документе, "Гигабайт" в справочнике → "1229 Гигабайт" (1,2 × 1024 = 1228,8 → округлить вверх, погрешность < 1%)
+- "500 ГБ" в документе, "Терабайт" в справочнике → "0,5 Терабайт" (500 / 1024 = 0,49 → сохраняем дробь, округление дало бы 100% погрешность)
+- "3,3 ГГц" в документе, "Гигагерц" в справочнике → "3,3 Гигагерц" (единицы совпадают, НЕ конвертировать!)
+- "3300 МГц" в документе, "Гигагерц" в справочнике → "3,3 Гигагерц" (3300 / 1000 = 3,3 → сохраняем дробь)
+- "2,5 кВт" в документе, "Ватт" в справочнике → "2560 Ватт" (2,5 × 1024 = 2560 → округляем вверх)
+- "1000 Вт" в документе, "киловатт" в справочнике → "1 Киловатт" (1000 / 1000 = 1)
+
+ПРАВИЛО ОКРУГЛЕНИЯ:
+- От БОЛЬШЕГО к МЕНЬШЕМУ (ТБ→ГБ, ГГц→МГц, кВт→Вт) — ОКРУГЛЯЙ ВВЕРХ до целого (погрешность < 1%)
+- От МЕНЬШЕГО к БОЛЬШЕМУ (ГБ→ТБ, МГц→ГГц, Вт→кВт) — СОХРАНЯЙ ДРОБЬ (округление даёт большую погрешность)
+
+ПРОВЕРКА ЗДРАВОГО СМЫСЛА:
+- Частота процессора: 0.1 - 20 ГГц (НЕ 3300 ГГц!)
+- Объём памяти: 1 - 10000 ГБ (НЕ 10000000 ГБ!)
+- Мощность: 10 - 10000 Вт
+
+СПРАВОЧНИК КТРУ С ЕДИНИЦАМИ ИЗМЕРЕНИЯ (${Object.keys(limitedDictWithUnits).length} категорий):
+${dictWithUnitsJson}
 
 ПРАВИЛА ДЛЯ КАТЕГОРИЙ:
 - Выбери одну категорию: ${Object.keys(limitedDictByCat).join(', ')}
@@ -853,15 +963,17 @@ ${dictJson}
       "name": "наименование товара",
       "quantity": 1,
       "characteristics": [
-        {"name": "название из справочника КТРУ", "value": "значение"}
+        {"name": "название из справочника КТРУ", "value": "значение с единицей измерения ИЗ СПРАВОЧНИКА"}
       ]
     }
   ]
 }`
     };
 
-    if (typeof input !== 'string') {
-      options.inlineData = input;
+    if (inputImages && inputImages.length > 0) {
+      options.inlineData = inputImages.length === 1 ? inputImages[0] : inputImages;
+    } else if (typeof input === 'string') {
+      // текстовый ввод
     }
 
     const res = await generateCompletion(prompt, options);
@@ -902,9 +1014,57 @@ ${dictJson}
     let parsed: any = { items: [], metadata: {} };
     try {
       const jsonText = extractJson(res.text);
-      if (jsonText) parsed = JSON.parse(jsonText);
-    } catch (e) {
-      console.error("Parse error", e);
+      if (jsonText) {
+        parsed = JSON.parse(jsonText);
+      }
+    } catch (e: any) {
+      console.error("[extractDataWithSchema] JSON parse error:", e.message);
+      const text = res.text;
+      console.warn("[extractDataWithSchema] Response length:", text.length, "chars");
+      
+      // Попытка восстановить обрезанный JSON
+      try {
+        const startIdx = text.search(/[\[{]/);
+        if (startIdx !== -1) {
+          let partial = text.slice(startIdx);
+          
+          // Находим последнюю завершённую характеристику
+          const lastCompleteChar = partial.lastIndexOf(', "value": "');
+          if (lastCompleteChar > 0) {
+            // Ищем конец этой строки
+            let endPos = partial.indexOf('"', lastCompleteChar + 12);
+            if (endPos > 0) {
+              // Ищем конец объекта характеристики
+              let braceCount = 0;
+              let pos = endPos;
+              for (; pos < partial.length && pos < lastCompleteChar + 2000; pos++) {
+                if (partial[pos] === '{' || partial[pos] === '[') braceCount++;
+                if (partial[pos] === '}' || partial[pos] === ']') {
+                  braceCount--;
+                  if (braceCount <= 0) break;
+                }
+              }
+              
+              // Обрезаем до последнего полного элемента
+              partial = partial.slice(0, pos + 1);
+              
+              // Закрываем незакрытые скобки
+              const openBraces = (partial.match(/{/g) || []).length;
+              const closeBraces = (partial.match(/}/g) || []).length;
+              const openBrackets = (partial.match(/\[/g) || []).length;
+              const closeBrackets = (partial.match(/\]/g) || []).length;
+              
+              for (let i = closeBrackets; i < openBrackets; i++) partial += ']';
+              for (let i = closeBraces; i < openBraces; i++) partial += '}';
+              
+              console.log("[extractDataWithSchema] Attempting recovery, fixed JSON length:", partial.length);
+              parsed = JSON.parse(partial);
+            }
+          }
+        }
+      } catch (recoverErr) {
+        console.error("[extractDataWithSchema] Recovery failed:", recoverErr);
+      }
     }
 
     if (Array.isArray(parsed)) {

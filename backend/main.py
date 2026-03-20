@@ -109,7 +109,7 @@ async def ollama_generate(request: OllamaRequest):
     if request.images:
         body["images"] = request.images
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         response = await client.post(
             f"{endpoint}/generate",
             headers=headers,

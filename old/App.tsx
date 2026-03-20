@@ -18,7 +18,7 @@ import {
   saveDictionaryToPostgres,
   checkConnection, getApiUrl
 } from './services/db.ts';
-import { parseFile } from './services/parsers.ts';
+import { parseFile, convertPdfToImages, isVisionModel } from './services/parsers.ts';
 import { subscribeLogs, LogEntry, clearLogs, addLog } from './services/logger.ts';
 
 const parseTokenString = (str: string) => {
@@ -85,18 +85,18 @@ const App: React.FC = () => {
       const testPrompt = 'Ответь одним словом: ОК';
       
       if (config.provider === 'google') {
+        const apiKey = config.googleApiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+        if (!apiKey) throw new Error('API ключ Google Gemini не указан. Введите ключ в настройках.');
         const { GoogleGenAI, Type } = await import('@google/genai');
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-        if (!apiKey) throw new Error('API ключ не указан');
         const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
           model: config.googleModel,
           contents: testPrompt,
         });
-        setLlmStatus({ ok: true, msg: `Модель ${config.googleModel} отвечает` });
+        setLlmStatus({ ok: true, msg: `✓ Модель ${config.googleModel} доступна` });
       } else if (config.provider === 'openrouter') {
-        const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || '';
-        if (!apiKey) throw new Error('API ключ не указан');
+        const apiKey = config.openrouterApiKey || import.meta.env.VITE_OPENROUTER_API_KEY || '';
+        if (!apiKey) throw new Error('API ключ OpenRouter не указан. Введите ключ в настройках.');
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -113,11 +113,14 @@ const App: React.FC = () => {
           const err = await response.json();
           throw new Error(err.error?.message || `Ошибка ${response.status}`);
         }
-        setLlmStatus({ ok: true, msg: `Модель ${config.openrouterModel} отвечает` });
+        setLlmStatus({ ok: true, msg: `✓ Модель ${config.openrouterModel} доступна` });
       } else if (config.provider === 'ollama') {
         const isCloud = config.ollamaMode === 'cloud';
         const endpoint = isCloud ? getApiUrl() : config.ollamaEndpoint;
         const model = isCloud ? config.ollamaCloudModel : config.ollamaLocalModel;
+        
+        if (!model) throw new Error('Модель Ollama не выбрана. Выберите модель в настройках.');
+        
         const response = await fetch(`${endpoint}/ollama/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -131,10 +134,10 @@ const App: React.FC = () => {
           const err = await response.text();
           throw new Error(err || `Ошибка ${response.status}`);
         }
-        setLlmStatus({ ok: true, msg: `Модель ${model} отвечает` });
+        setLlmStatus({ ok: true, msg: `✓ Модель ${model} доступна` });
       }
     } catch (e: any) {
-      setLlmStatus({ ok: false, msg: e.message || 'Ошибка соединения' });
+      setLlmStatus({ ok: false, msg: `✗ ${e.message || 'Ошибка соединения'}` });
     } finally {
       setIsCheckingLlm(false);
     }
@@ -670,7 +673,35 @@ const App: React.FC = () => {
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'processing', progress: 5 } : t));
     try {
       const curDict = await db.dictionary.toArray();
-      const content = await parseFile(task.file);
+      
+      let content: string | { data: string; mimeType: string } | { data: string; mimeType: string }[];
+      
+      const ext = task.file.name.split('.').pop()?.toLowerCase();
+      const isPdf = ext === 'pdf';
+      
+      const currentModel = dbConfig.provider === 'ollama' 
+        ? (dbConfig.ollamaMode === 'cloud' ? dbConfig.ollamaCloudModel : dbConfig.ollamaLocalModel)
+        : dbConfig.provider === 'google' 
+          ? dbConfig.googleModel 
+          : dbConfig.openrouterModel;
+      
+      if (isPdf) {
+        try {
+          const text = await parseFile(task.file) as string;
+          if (text && text.length > 100) {
+            content = text;
+          } else {
+            console.log('[processFile] PDF text too short, converting to images');
+            content = await convertPdfToImages(task.file, 5);
+          }
+        } catch (pdfErr: any) {
+          console.log('[processFile] PDF error, converting to images:', pdfErr.message);
+          content = await convertPdfToImages(task.file, 5);
+        }
+      } else {
+        content = await parseFile(task.file);
+      }
+      
       const { items, metadata, tokenUsage: exU } = await extractDataWithSchema(content, curDict, dbConfig.model, handleRetryNotification);
       updateTokenStats('Анализ', exU);
       if (!items.length) {
@@ -892,22 +923,29 @@ const App: React.FC = () => {
                   <div className="divide-y flex-grow overflow-auto">
                     {tasks.length === 0 && <div className="p-4 text-center text-xs text-slate-300">Пусто</div>}
                     {tasks.map(t => (
-                      <div key={t.id} className="p-3 flex items-center justify-between gap-3">
-                        <span className="text-xs truncate font-medium flex-grow">{t.fileName}</span>
-                        <div className="flex items-center gap-3">
-                          {t.status === 'completed' && t.xlsxUrl && (
-                            <a
-                              href={t.xlsxUrl}
-                              download={t.xlsxFileName || undefined}
-                              className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg font-black border border-emerald-100 hover:bg-emerald-100"
-                            >
-                              Скачать XLSX
-                            </a>
-                          )}
-                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-indigo-600" style={{ width: `${t.progress}%` }} />
+                      <div key={t.id} className="p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs truncate font-medium flex-grow">{t.fileName}</span>
+                          <div className="flex items-center gap-3">
+                            {t.status === 'completed' && t.xlsxUrl && (
+                              <a
+                                href={t.xlsxUrl}
+                                download={t.xlsxFileName || undefined}
+                                className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg font-black border border-emerald-100 hover:bg-emerald-100"
+                              >
+                                Скачать XLSX
+                              </a>
+                            )}
+                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${t.status === 'error' ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${t.progress}%` }} />
+                            </div>
                           </div>
                         </div>
+                        {t.status === 'error' && t.error && (
+                          <div className="mt-2 text-[11px] text-red-600 bg-red-50 p-2 rounded border border-red-100">
+                            {t.error}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

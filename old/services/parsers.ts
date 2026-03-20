@@ -6,8 +6,6 @@ const loadXlsx = async () => {
   return mod?.default || mod;
 };
 
-// Хелпер для определения MIME-типа по расширению
-// Браузеры иногда ошибаются или дают generic тип, что вызывает 400 ошибку у Gemini
 const getMimeType = (fileName: string, fallbackType: string): string => {
   const ext = fileName.split('.').pop()?.toLowerCase();
   switch (ext) {
@@ -22,8 +20,134 @@ const getMimeType = (fileName: string, fallbackType: string): string => {
   }
 };
 
+const extractPdfText = async (file: File): Promise<string> => {
+  console.log('[PDF] Starting text extraction for:', file.name, 'size:', file.size);
+  
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
+    
+    const arrayBuffer = await file.arrayBuffer();
+    console.log('[PDF] ArrayBuffer size:', arrayBuffer.byteLength);
+    
+    const pdf = await pdfjsLib.getDocument({ 
+      data: arrayBuffer,
+      useWorkerFetch: false,
+      isEvalSupported: false
+    }).promise;
+    
+    console.log('[PDF] Pages:', pdf.numPages);
+    
+    let fullText = `[Тип файла: PDF]\n`;
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      console.log('[PDF] Page', i, 'text length:', pageText.length);
+      if (pageText.trim()) {
+        fullText += `--- Страница ${i} ---\n${pageText}\n`;
+      }
+    }
+    
+    console.log('[PDF] Total text length:', fullText.length);
+    return fullText;
+  } catch (e: any) {
+    console.error('[PDF] Extraction error:', e.message, e.stack);
+    throw new Error(`Ошибка извлечения текста из PDF: ${e.message}`);
+  }
+};
+
+export const convertPdfToImages = async (file: File, maxPages: number = 5): Promise<{ data: string; mimeType: string }[]> => {
+  console.log('[PDF->Image] Converting PDF to images:', file.name);
+  
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
+  
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ 
+    data: arrayBuffer,
+    useWorkerFetch: false,
+    isEvalSupported: false
+  }).promise;
+  
+  const images: { data: string; mimeType: string }[] = [];
+  const numPages = Math.min(pdf.numPages, maxPages);
+  
+  console.log('[PDF->Image] Converting', numPages, 'pages');
+  
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    // Уменьшаем масштаб для меньшего размера изображений
+    const scale = 1.0;
+    const viewport = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Cannot create canvas context');
+    
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    await page.render({
+      canvasContext: context,
+      viewport: viewport
+    }).promise;
+    
+    // Качество 70% для уменьшения размера
+    const base64 = canvas.toDataURL('image/jpeg', 0.70).split(',')[1];
+    images.push({ data: base64, mimeType: 'image/jpeg' });
+    console.log('[PDF->Image] Page', i, 'converted, size:', Math.round(base64.length / 1024), 'KB');
+  }
+  
+  console.log('[PDF->Image] Total images:', images.length, 'Total size:', Math.round(images.reduce((s, i) => s + i.data.length, 0) / 1024), 'KB');
+  return images;
+};
+
+export const isVisionModel = (modelId: string, provider: string, ollamaMode?: string): boolean => {
+  if (provider === 'google') return true;
+  if (provider === 'openrouter') return true;
+  
+  // Vision-модели для Ollama Cloud/Local
+  const visionKeywords = ['vl', 'vision', 'gemma3', 'gemini', 'llava', 'moondream', 'qwen3-vl'];
+  const modelLower = (modelId || '').toLowerCase();
+  const isVision = visionKeywords.some(vk => modelLower.includes(vk));
+  
+  if (provider === 'ollama' && ollamaMode === 'cloud') {
+    return isVision;
+  }
+  if (provider === 'ollama' && ollamaMode === 'local') {
+    return isVision;
+  }
+  return false;
+};
+
 export const parseFile = async (file: File): Promise<string | { data: string; mimeType: string }> => {
   const ext = file.name.split('.').pop()?.toLowerCase();
+
+  // Обработка PDF - всегда извлекаем текст (Ollama Cloud не поддерживает PDF напрямую)
+  if (ext === 'pdf') {
+    try {
+      const text = await extractPdfText(file);
+      console.log('[PDF] Extracted text length:', text.length);
+      if (text.length > 100) {
+        return text;
+      }
+      console.log('[PDF] Text too short, PDF likely contains images');
+    } catch (e: any) {
+      console.error('[PDF] extractPdfText failed:', e.message);
+    }
+    // Если текст не извлёкся - всё равно НЕ отправляем PDF как бинарник в Ollama Cloud
+    // Показываем ошибку
+    throw new Error(
+      'Не удалось извлечь текст из PDF. ' +
+      'PDF содержит изображения или повреждён. ' +
+      'Используйте провайдер Google Gemini или OpenRouter для обработки таких файлов.'
+    );
+  }
 
   // Обработка DOCX (Microsoft Word)
   if (ext === 'docx') {
