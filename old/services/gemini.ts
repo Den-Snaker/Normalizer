@@ -294,21 +294,20 @@ async function generateGoogle(prompt: string, config: LLMConfig, options?: Gener
 
   const parts: any[] = [];
   
-  // Gemini поддерживает только одно изображение за раз, отправляем первым
+  // Google Gemini поддерживает несколько файлов (PDF, изображения) в одном запросе
   if (options?.inlineData) {
-    const imageData = Array.isArray(options.inlineData) ? options.inlineData[0] : options.inlineData;
-    if (imageData && imageData.data && imageData.mimeType) {
-      parts.push({ 
-        inlineData: { 
-          mimeType: imageData.mimeType, 
-          data: imageData.data 
-        } 
-      });
+    const files = Array.isArray(options.inlineData) ? options.inlineData : [options.inlineData];
+    for (const file of files) {
+      if (file && file.data && file.mimeType) {
+        parts.push({ 
+          inlineData: { 
+            mimeType: file.mimeType, 
+            data: file.data 
+          } 
+        });
+      }
     }
-    // Если несколько изображений, добавляем информацию о количестве
-    if (Array.isArray(options.inlineData) && options.inlineData.length > 1) {
-      console.log(`[Google] Sending ${options.inlineData.length} images, but Gemini only accepts 1 per request. Using first image.`);
-    }
+    console.log(`[Google] Sending ${parts.length} file(s) with prompt`);
   }
   parts.push({ text: prompt });
 

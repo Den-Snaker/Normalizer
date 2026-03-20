@@ -77,6 +77,17 @@ const App: React.FC = () => {
   const [llmStatus, setLlmStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   const [isCheckingLlm, setIsCheckingLlm] = useState(false);
 
+  // API Key sources: 'env' (from .env.local) or 'custom' (user-provided via dbConfig)
+  const envKeys = {
+    google: import.meta.env.VITE_GEMINI_API_KEY as string | undefined,
+    openrouter: import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined,
+  };
+
+  const maskKey = (key: string | undefined): string => {
+    if (!key || key.length < 4) return '';
+    return `...${key.slice(-4)}`;
+  };
+
   const handleCheckLlm = async () => {
     setIsCheckingLlm(true);
     setLlmStatus(null);
@@ -679,27 +690,59 @@ const App: React.FC = () => {
       const ext = task.file.name.split('.').pop()?.toLowerCase();
       const isPdf = ext === 'pdf';
       
-      const currentModel = dbConfig.provider === 'ollama' 
-        ? (dbConfig.ollamaMode === 'cloud' ? dbConfig.ollamaCloudModel : dbConfig.ollamaLocalModel)
-        : dbConfig.provider === 'google' 
-          ? dbConfig.googleModel 
-          : dbConfig.openrouterModel;
+      const config = dbConfig.llm;
+      const isGoogle = config.provider === 'google';
       
-      if (isPdf) {
-        try {
-          const text = await parseFile(task.file) as string;
-          if (text && text.length > 100) {
-            content = text;
-          } else {
-            console.log('[processFile] PDF text too short, converting to images');
-            content = await convertPdfToImages(task.file, 5);
-          }
-        } catch (pdfErr: any) {
-          console.log('[processFile] PDF error, converting to images:', pdfErr.message);
-          content = await convertPdfToImages(task.file, 5);
+      // Для Google - отправляем файл как есть (PDF, изображения)
+      // Для других провайдеров - извлекаем текст / конвертируем в изображения
+      if (isGoogle) {
+        // Google Gemini поддерживает файлы напрямую
+        const fileData = await new Promise<{ data: string; mimeType: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(task.file);
+          reader.onload = () => {
+            const result = reader.result as string;
+            const base64 = result.split(',')[1];
+            const mimeTypes: Record<string, string> = {
+              'pdf': 'application/pdf',
+              'png': 'image/png',
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'webp': 'image/webp',
+              'gif': 'image/gif',
+              'heic': 'image/heic',
+              'heif': 'image/heif',
+            };
+            const mimeType = mimeTypes[ext || ''] || task.file.type || 'application/octet-stream';
+            resolve({ data: base64, mimeType });
+          };
+          reader.onerror = reject;
+        });
+        
+        // Для DOCX/XLSX/MSG - всё равно парсим в текст
+        if (['docx', 'doc', 'xlsx', 'xls', 'msg'].includes(ext || '')) {
+          content = await parseFile(task.file);
+        } else {
+          content = fileData;
         }
       } else {
-        content = await parseFile(task.file);
+        // Для OpenRouter и Ollama - существующая логика
+        if (isPdf) {
+          try {
+            const text = await parseFile(task.file) as string;
+            if (text && text.length > 100) {
+              content = text;
+            } else {
+              console.log('[processFile] PDF text too short, converting to images');
+              content = await convertPdfToImages(task.file, 5);
+            }
+          } catch (pdfErr: any) {
+            console.log('[processFile] PDF error, converting to images:', pdfErr.message);
+            content = await convertPdfToImages(task.file, 5);
+          }
+        } else {
+          content = await parseFile(task.file);
+        }
       }
       
       const { items, metadata, tokenUsage: exU } = await extractDataWithSchema(content, curDict, dbConfig.model, handleRetryNotification);
@@ -1564,11 +1607,49 @@ const App: React.FC = () => {
               </div>
 
               <div className="space-y-4 pt-4 border-t">
-                {dbConfig.llm.provider === 'google' && (
+                {dbConfig.llm.provider === 'google' && (() => {
+                  const hasEnvKey = !!envKeys.google;
+                  const useCustomKey = !!dbConfig.llm.googleApiKey;
+                  return (
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400">API Key (из .env.local)</label>
-                      <input value="Указан в переменных окружения" disabled className="w-full p-2 bg-slate-50 border rounded-lg text-sm text-slate-400" />
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase text-slate-400">API Key Google Gemini</label>
+                        {hasEnvKey && !useCustomKey && (
+                          <span className="text-[10px] text-emerald-600 font-bold">✓ Найден в конфигурации: {maskKey(envKeys.google)}</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {hasEnvKey && (
+                          <label className="flex items-center gap-1 text-xs">
+                            <input 
+                              type="radio" 
+                              checked={!useCustomKey} 
+                              onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, googleApiKey: ''}})}
+                              className="w-3 h-3"
+                            />
+                            <span>Из .env</span>
+                          </label>
+                        )}
+                        <label className="flex items-center gap-1 text-xs">
+                          <input 
+                            type="radio" 
+                            checked={useCustomKey} 
+                            onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, googleApiKey: dbConfig.llm.googleApiKey || ' '}})}
+                            className="w-3 h-3"
+                          />
+                          <span>Свой ключ</span>
+                        </label>
+                      </div>
+                      {useCustomKey && (
+                        <input 
+                          type="password" 
+                          value={dbConfig.llm.googleApiKey || ''} 
+                          onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, googleApiKey: e.target.value}})} 
+                          placeholder="AIza..." 
+                          className="w-full p-2 bg-white border rounded-lg text-sm font-mono" 
+                        />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400">Модель</label>
@@ -1582,17 +1663,59 @@ const App: React.FC = () => {
                       <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
                       <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
                     </div>
+                    {llmStatus && dbConfig.llm.provider === 'google' && (
+                      <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
+                    )}
                     <div className="p-3 bg-blue-50 text-blue-700 text-xs rounded-xl font-medium border border-blue-100">
                       ℹ️ Поддерживает поиск по сайтам для загрузки актуального справочника КТРУ.
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
-                {dbConfig.llm.provider === 'openrouter' && (
+                {dbConfig.llm.provider === 'openrouter' && (() => {
+                  const hasEnvKey = !!envKeys.openrouter;
+                  const useCustomKey = !!dbConfig.llm.openrouterApiKey;
+                  return (
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400">API Key (из .env.local)</label>
-                      <input value="Указан в переменных окружения" disabled className="w-full p-2 bg-slate-50 border rounded-lg text-sm text-slate-400" />
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase text-slate-400">API Key OpenRouter</label>
+                        {hasEnvKey && !useCustomKey && (
+                          <span className="text-[10px] text-emerald-600 font-bold">✓ Найден в конфигурации: {maskKey(envKeys.openrouter)}</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {hasEnvKey && (
+                          <label className="flex items-center gap-1 text-xs">
+                            <input 
+                              type="radio" 
+                              checked={!useCustomKey} 
+                              onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, openrouterApiKey: ''}})}
+                              className="w-3 h-3"
+                            />
+                            <span>Из .env</span>
+                          </label>
+                        )}
+                        <label className="flex items-center gap-1 text-xs">
+                          <input 
+                            type="radio" 
+                            checked={useCustomKey} 
+                            onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, openrouterApiKey: dbConfig.llm.openrouterApiKey || ' '}})}
+                            className="w-3 h-3"
+                          />
+                          <span>Свой ключ</span>
+                        </label>
+                      </div>
+                      {useCustomKey && (
+                        <input 
+                          type="password" 
+                          value={dbConfig.llm.openrouterApiKey || ''} 
+                          onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, openrouterApiKey: e.target.value}})} 
+                          placeholder="sk-or-..." 
+                          className="w-full p-2 bg-white border rounded-lg text-sm font-mono" 
+                        />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400">Модель</label>
@@ -1606,11 +1729,15 @@ const App: React.FC = () => {
                       <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
                       <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
                     </div>
+                    {llmStatus && dbConfig.llm.provider === 'openrouter' && (
+                      <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
+                    )}
                     <div className="p-3 bg-amber-50 text-amber-700 text-xs rounded-xl font-medium border border-amber-100">
                       ⚠️ Поиск по сайтам КТРУ недоступен. Модель будет использовать свои знания.
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
                 {dbConfig.llm.provider === 'ollama' && (
                   <div className="space-y-4">
