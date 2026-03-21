@@ -134,14 +134,24 @@ const App: React.FC = () => {
         
         if (!model) throw new Error('Модель Ollama не выбрана. Выберите модель в настройках.');
         
+        const body: Record<string, any> = {
+          model,
+          prompt: testPrompt,
+          stream: false,
+        };
+        
+        // Для Ollama Cloud передаём API ключ
+        if (isCloud) {
+          if (!config.ollamaCloudApiKey) {
+            throw new Error('API ключ Ollama Cloud не указан. Введите ключ в настройках.');
+          }
+          body.api_key = config.ollamaCloudApiKey;
+        }
+        
         const response = await fetch(`${endpoint}/ollama/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model,
-            prompt: testPrompt,
-            stream: false,
-          }),
+          body: JSON.stringify(body),
         });
         if (!response.ok) {
           const err = await response.text();
