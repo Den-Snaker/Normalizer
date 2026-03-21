@@ -78,10 +78,11 @@ const App: React.FC = () => {
   const [isCheckingLlm, setIsCheckingLlm] = useState(false);
 
   // API Key sources: 'env' (from .env.local) or 'custom' (user-provided via dbConfig)
+  // Note: Ollama Cloud key is NOT exposed from env for security reasons
   const envKeys = {
     google: import.meta.env.VITE_GEMINI_API_KEY as string | undefined,
     openrouter: import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined,
-    ollama: import.meta.env.VITE_OLLAMA_CLOUD_API_KEY as string | undefined,
+    ollama: undefined, // Never expose Ollama Cloud key from env - user must enter it
   };
 
   const maskKey = (key: string | undefined): string => {
@@ -1639,7 +1640,7 @@ const App: React.FC = () => {
                             onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, googleApiKey: dbConfig.llm.googleApiKey || ' '}})}
                             className="w-3 h-3"
                           />
-                          <span>Свой ключ</span>
+                          <span>API ключ</span>
                         </label>
                       </div>
                       {useCustomKey && (
@@ -1702,7 +1703,7 @@ const App: React.FC = () => {
                             onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, openrouterApiKey: dbConfig.llm.openrouterApiKey || ' '}})}
                             className="w-3 h-3"
                           />
-                          <span>Свой ключ</span>
+                          <span>API ключ</span>
                         </label>
                       </div>
                       {useCustomKey && (
@@ -1778,48 +1779,18 @@ const App: React.FC = () => {
                         </div>
                       </>
                     ) : (() => {
-                      const hasEnvKey = !!envKeys.ollama;
-                      const useCustomKey = !!dbConfig.llm.ollamaCloudApiKey;
+                      // Ollama Cloud - always requires user to enter API key (no env fallback for security)
                       return (
                         <div className="space-y-4">
                           <div className="space-y-1">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-black uppercase text-slate-400">API Key Ollama Cloud</label>
-                              {hasEnvKey && !useCustomKey && (
-                                <span className="text-[10px] text-emerald-600 font-bold">✓ Найден в конфигурации: {maskKey(envKeys.ollama)}</span>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              {hasEnvKey && (
-                                <label className="flex items-center gap-1 text-xs">
-                                  <input 
-                                    type="radio" 
-                                    checked={!useCustomKey} 
-                                    onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: ''}})}
-                                    className="w-3 h-3"
-                                  />
-                                  <span>Из .env</span>
-                                </label>
-                              )}
-                              <label className="flex items-center gap-1 text-xs">
-                                <input 
-                                  type="radio" 
-                                  checked={useCustomKey} 
-                                  onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: dbConfig.llm.ollamaCloudApiKey || ' '}})}
-                                  className="w-3 h-3"
-                                />
-                                <span>Свой ключ</span>
-                              </label>
-                            </div>
-                            {useCustomKey && (
-                              <input 
-                                type="password" 
-                                value={dbConfig.llm.ollamaCloudApiKey || ''} 
-                                onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: e.target.value}})} 
-                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.a_xxxxxxxxxxxxxxxxxxxx" 
-                                className="w-full p-2 bg-white border rounded-lg text-sm font-mono" 
-                              />
-                            )}
+                            <label className="text-[10px] font-black uppercase text-slate-400">API Key Ollama Cloud</label>
+                            <input 
+                              type="password" 
+                              value={dbConfig.llm.ollamaCloudApiKey || ''} 
+                              onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: e.target.value}})} 
+                              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.a_xxxxxxxxxxxxxxxxxxxx" 
+                              className="w-full p-2 bg-white border rounded-lg text-sm font-mono" 
+                            />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase text-slate-400">Облачная модель</label>

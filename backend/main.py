@@ -80,19 +80,19 @@ async def seed_initial_data():
         await session.commit()
 
 
-OLLAMA_CLOUD_API_KEY = os.getenv("OLLAMA_CLOUD_API_KEY", "")
+# OLLAMA_CLOUD_API_KEY is intentionally NOT loaded from env for security reasons
+# Users must provide their API key through the UI settings
 
 
 @app.post("/ollama/generate", response_model=OllamaResponse)
 async def ollama_generate(request: OllamaRequest):
     """
     Прокси для запросов к облачному Ollama API.
-    API ключ берётся из запроса (api_key) или из переменной окружения OLLAMA_CLOUD_API_KEY.
+    API ключ должен быть передан в запросе (api_key) - это обязательно для безопасности.
     """
-    # Use API key from request if provided, otherwise from environment
-    api_key = request.api_key or OLLAMA_CLOUD_API_KEY
+    api_key = request.api_key
     if not api_key:
-        raise HTTPException(status_code=500, detail="OLLAMA_CLOUD_API_KEY не указан. Введите ключ в настройках или настройте на сервере.")
+        raise HTTPException(status_code=400, detail="API ключ Ollama Cloud не указан. Введите ключ в настройках приложения.")
     
     endpoint = "https://ollama.com/api"
     

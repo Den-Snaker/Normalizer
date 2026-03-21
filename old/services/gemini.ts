@@ -462,12 +462,14 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
       : [options.inlineData.data];
   }
 
-  // Для Ollama Cloud передаём API ключ из конфигурации или env
+  // Для Ollama Cloud API ключ ОБЯЗАТЕЛЬНО должен быть указан пользователем
+  // Мы НЕ используем env переменную для безопасности
   if (isCloud) {
-    const ollamaApiKey = config.ollamaCloudApiKey || (import.meta as any).env?.VITE_OLLAMA_CLOUD_API_KEY;
-    if (ollamaApiKey) {
-      body.api_key = ollamaApiKey;
+    const ollamaApiKey = config.ollamaCloudApiKey;
+    if (!ollamaApiKey) {
+      throw new Error('API ключ Ollama Cloud не указан. Введите ключ в настройках приложения.');
     }
+    body.api_key = ollamaApiKey;
   }
 
   const response = await fetch(`${endpoint}/ollama/generate`, {
