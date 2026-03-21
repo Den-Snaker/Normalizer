@@ -80,21 +80,36 @@ export const LLM_MODELS = {
   ],
   
   ollama_cloud: [
-    // Cloud-only models - require size tag for some models
+    // Cloud-only models from ollama.com - must use -cloud suffix or specific cloud tags
+    // Models without -cloud suffix are LOCAL only (require download)
+    
+    // GLM models
     { id: 'glm-5', name: 'GLM-5 (744B)', cloud: true },
     { id: 'glm-4.7', name: 'GLM 4.7', cloud: true },
     { id: 'glm-4.6', name: 'GLM 4.6', cloud: true },
-    { id: 'qwen3.5', name: 'Qwen 3.5', cloud: true },
+    
+    // Qwen models - use :cloud suffix for cloud versions
+    { id: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', cloud: true, vision: true },
+    { id: 'qwen3.5:397b-cloud', name: 'Qwen 3.5 (397B) Cloud', cloud: true, vision: true },
     { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', cloud: true },
-    { id: 'qwen3-vl:235b', name: 'Qwen 3 VL (235B)', cloud: true, vision: true },
-    { id: 'qwen3-vl:32b', name: 'Qwen 3 VL (32B)', cloud: true, vision: true },
-    { id: 'qwen3-vl:8b', name: 'Qwen 3 VL (8B)', cloud: true, vision: true },
+    
+    // Qwen VL models - ONLY -cloud versions available
+    { id: 'qwen3-vl:235b-cloud', name: 'Qwen 3 VL (235B) Cloud', cloud: true, vision: true },
+    { id: 'qwen3-vl:235b-instruct-cloud', name: 'Qwen 3 VL Instruct Cloud', cloud: true, vision: true },
+    
+    // Qwen Next
     { id: 'qwen3-next:80b', name: 'Qwen3 Next (80B)', cloud: true },
+    
+    // Devstral
     { id: 'devstral-2:123b', name: 'Devstral 2 (123B)', cloud: true },
     { id: 'devstral-small-2:24b', name: 'Devstral Small 2 (24B)', cloud: true },
+    
+    // MiniMax
     { id: 'minimax-m2.7', name: 'MiniMax M2.7', cloud: true },
     { id: 'minimax-m2.5', name: 'MiniMax M2.5', cloud: true },
     { id: 'minimax-m2', name: 'MiniMax M2', cloud: true },
+    
+    // Other cloud models
     { id: 'kimi-k2.5', name: 'Kimi K2.5', cloud: true },
     { id: 'nemotron-3-super', name: 'Nemotron 3 Super (120B)', cloud: true },
     { id: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano (30B)', cloud: true },

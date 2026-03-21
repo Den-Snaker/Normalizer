@@ -81,6 +81,7 @@ const App: React.FC = () => {
   const envKeys = {
     google: import.meta.env.VITE_GEMINI_API_KEY as string | undefined,
     openrouter: import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined,
+    ollama: import.meta.env.VITE_OLLAMA_CLOUD_API_KEY as string | undefined,
   };
 
   const maskKey = (key: string | undefined): string => {
@@ -1663,17 +1664,14 @@ const App: React.FC = () => {
                       <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
                       <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
                     </div>
-                    {llmStatus && dbConfig.llm.provider === 'google' && (
-                      <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
-                    )}
-                    <div className="p-3 bg-blue-50 text-blue-700 text-xs rounded-xl font-medium border border-blue-100">
-                      ℹ️ Поддерживает поиск по сайтам для загрузки актуального справочника КТРУ.
-                    </div>
-                  </div>
-                  );
-                })()}
+                     {llmStatus && dbConfig.llm.provider === 'google' && (
+                       <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
+                     )}
+                   </div>
+                   );
+                 })()}
 
-                {dbConfig.llm.provider === 'openrouter' && (() => {
+                 {dbConfig.llm.provider === 'openrouter' && (() => {
                   const hasEnvKey = !!envKeys.openrouter;
                   const useCustomKey = !!dbConfig.llm.openrouterApiKey;
                   return (
@@ -1732,9 +1730,6 @@ const App: React.FC = () => {
                     {llmStatus && dbConfig.llm.provider === 'openrouter' && (
                       <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
                     )}
-                    <div className="p-3 bg-amber-50 text-amber-700 text-xs rounded-xl font-medium border border-amber-100">
-                      ⚠️ Поиск по сайтам КТРУ недоступен. Модель будет использовать свои знания.
-                    </div>
                   </div>
                   );
                 })()}
@@ -1782,31 +1777,68 @@ const App: React.FC = () => {
                           <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
                         </div>
                       </>
-                    ) : (
-                      <div className="space-y-4">
-                         <div className="space-y-1">
-                           <label className="text-[10px] font-black uppercase text-slate-400">Облачная модель</label>
-                           <select value={dbConfig.llm.ollamaCloudModel} onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudModel: e.target.value}})} className="w-full bg-white border p-2 rounded-lg text-sm font-bold outline-none">
-                             {LLM_MODELS.ollama_cloud.map(m => (
-                               <option key={m.id} value={m.id}>{m.name}</option>
-                             ))}
-                           </select>
-                         </div>
-                         <div className="p-3 bg-blue-50 text-blue-700 text-xs rounded-xl font-medium border border-blue-100">
-                           ℹ️ API ключ хранится на сервере. Для настройки обратитесь к администратору.
-                         </div>
-                         <div className="flex gap-2">
-                           <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
-                           <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
-                         </div>
-                       </div>
-                    )}
-                    {llmStatus && (
-                      <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
-                    )}
-                    <div className="p-3 bg-amber-50 text-amber-700 text-xs rounded-xl font-medium border border-amber-100">
-                      ⚠️ Поиск по сайтам КТРУ недоступен. Модель будет использовать свои знания.
-                    </div>
+                    ) : (() => {
+                      const hasEnvKey = !!envKeys.ollama;
+                      const useCustomKey = !!dbConfig.llm.ollamaCloudApiKey;
+                      return (
+                        <div className="space-y-4">
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[10px] font-black uppercase text-slate-400">API Key Ollama Cloud</label>
+                              {hasEnvKey && !useCustomKey && (
+                                <span className="text-[10px] text-emerald-600 font-bold">✓ Найден в конфигурации: {maskKey(envKeys.ollama)}</span>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              {hasEnvKey && (
+                                <label className="flex items-center gap-1 text-xs">
+                                  <input 
+                                    type="radio" 
+                                    checked={!useCustomKey} 
+                                    onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: ''}})}
+                                    className="w-3 h-3"
+                                  />
+                                  <span>Из .env</span>
+                                </label>
+                              )}
+                              <label className="flex items-center gap-1 text-xs">
+                                <input 
+                                  type="radio" 
+                                  checked={useCustomKey} 
+                                  onChange={() => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: dbConfig.llm.ollamaCloudApiKey || ' '}})}
+                                  className="w-3 h-3"
+                                />
+                                <span>Свой ключ</span>
+                              </label>
+                            </div>
+                            {useCustomKey && (
+                              <input 
+                                type="password" 
+                                value={dbConfig.llm.ollamaCloudApiKey || ''} 
+                                onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudApiKey: e.target.value}})} 
+                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.a_xxxxxxxxxxxxxxxxxxxx" 
+                                className="w-full p-2 bg-white border rounded-lg text-sm font-mono" 
+                              />
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400">Облачная модель</label>
+                            <select value={dbConfig.llm.ollamaCloudModel} onChange={e => setDbConfig({...dbConfig, llm: {...dbConfig.llm, ollamaCloudModel: e.target.value}})} className="w-full bg-white border p-2 rounded-lg text-sm font-bold outline-none">
+                              {LLM_MODELS.ollama_cloud.map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={async () => { await saveDbConfig(dbConfig); setIsSettingsSaved(true); setTimeout(() => setIsSettingsSaved(false), 2000); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-xs font-bold transition-colors">{isSettingsSaved ? '✓ Сохранено' : 'Сохранить'}</button>
+                            <button onClick={handleCheckLlm} disabled={isCheckingLlm} className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors disabled:opacity-50">{isCheckingLlm ? 'Проверка...' : 'Проверить'}</button>
+                          </div>
+                          {llmStatus && dbConfig.llm.provider === 'ollama' && dbConfig.llm.ollamaMode === 'cloud' && (
+                            <div className={`p-3 rounded-lg text-xs font-medium border ${llmStatus.ok ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{llmStatus.msg}</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

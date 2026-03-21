@@ -155,6 +155,7 @@ class OllamaRequest(BaseModel):
     stream: bool = False
     options: Optional[Dict[str, Any]] = None
     images: Optional[List[str]] = None
+    api_key: Optional[str] = None  # Custom API key (optional, overrides env)
 
 
 class OllamaResponse(BaseModel):

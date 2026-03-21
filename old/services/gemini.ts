@@ -431,7 +431,7 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
   let headers: Record<string, string> = { 'Content-Type': 'application/json' };
   
   if (isCloud) {
-    // Для облачного Ollama используем backend прокси (API ключ хранится на сервере)
+    // Для облачного Ollama используем backend прокси
     endpoint = getApiUrl();
   } else {
     // Для локального Ollama - прямой запрос
@@ -460,6 +460,14 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
     body.images = Array.isArray(options.inlineData) 
       ? options.inlineData.map(img => img.data)
       : [options.inlineData.data];
+  }
+
+  // Для Ollama Cloud передаём API ключ из конфигурации или env
+  if (isCloud) {
+    const ollamaApiKey = config.ollamaCloudApiKey || (import.meta as any).env?.VITE_OLLAMA_CLOUD_API_KEY;
+    if (ollamaApiKey) {
+      body.api_key = ollamaApiKey;
+    }
   }
 
   const response = await fetch(`${endpoint}/ollama/generate`, {

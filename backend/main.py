@@ -87,16 +87,18 @@ OLLAMA_CLOUD_API_KEY = os.getenv("OLLAMA_CLOUD_API_KEY", "")
 async def ollama_generate(request: OllamaRequest):
     """
     Прокси для запросов к облачному Ollama API.
-    API ключ берётся из переменной окружения OLLAMA_CLOUD_API_KEY.
+    API ключ берётся из запроса (api_key) или из переменной окружения OLLAMA_CLOUD_API_KEY.
     """
-    if not OLLAMA_CLOUD_API_KEY:
-        raise HTTPException(status_code=500, detail="OLLAMA_CLOUD_API_KEY не настроен на сервере")
+    # Use API key from request if provided, otherwise from environment
+    api_key = request.api_key or OLLAMA_CLOUD_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OLLAMA_CLOUD_API_KEY не указан. Введите ключ в настройках или настройте на сервере.")
     
     endpoint = "https://ollama.com/api"
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {OLLAMA_CLOUD_API_KEY}"
+        "Authorization": f"Bearer {api_key}"
     }
     
     body = {
