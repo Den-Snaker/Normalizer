@@ -149,7 +149,7 @@ echo ""
 echo "[Step 4/6] Installing frontend dependencies..."
 echo ""
 
-cd "$INSTALL_DIR/old"
+cd "$INSTALL_DIR/frontend"
 
 npm install
 echo "[OK] Frontend dependencies installed"
@@ -240,7 +240,7 @@ pip install -r requirements.txt
 
 echo ""
 echo "[4/4] Updating frontend..."
-cd "$INSTALL_DIR/old"
+cd "$INSTALL_DIR/frontend"
 npm install
 npm run build
 
@@ -259,7 +259,7 @@ cat > servers.sh << 'EOFSCRIPT'
 set -e
 cd "$(dirname "$0")"
 
-FRONTEND_DIR="$(pwd)/old"
+FRONTEND_DIR="$(pwd)/frontend"
 BACKEND_DIR="$(pwd)/backend"
 FRONTEND_PID=""
 BACKEND_PID=""
@@ -416,7 +416,7 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "  1. Configure API keys:"
-echo "     nano $INSTALL_DIR/old/.env.local"
+echo "     nano $INSTALL_DIR/frontend/.env.local"
 echo ""
 echo "     Add your keys:"
 echo "     VITE_GEMINI_API_KEY=your_key"

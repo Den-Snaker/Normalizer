@@ -42,7 +42,7 @@
 
 ### Шаг 3: Настройте API ключи
 
-Отредактируйте файл `Normalizer\old\.env.local`:
+Отредактируйте файл `Normalizer\frontend\.env.local`:
 
 ```
 VITE_GEMINI_API_KEY=ваш_ключ_gemini
@@ -112,7 +112,7 @@ Normalizer/
 │   ├── main.py          # Точка входа
 │   ├── requirements.txt # Зависимости
 │   └── .env             # Конфигурация
-├── old/                  # React Frontend
+├── frontend/             # React Frontend
 │   ├── src/             # Исходный код
 │   ├── .env.local       # API ключи
 │   └── package.json     # Зависимости
@@ -140,7 +140,7 @@ taskkill /F /PID <номер_процесса>
 ### Ошибка npm
 
 ```cmd
-cd Normalizer\old
+cd Normalizer\frontend
 npm install
 npm run build
 ```

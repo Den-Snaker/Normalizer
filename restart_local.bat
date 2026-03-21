@@ -28,7 +28,7 @@ start "Normalizer-Backend" cmd /c "cd /d D:\Opencode\OpenCode_models\Normalize\b
 echo     Backend starting...
 timeout /t 3 /nobreak >nul
 
-start "Normalizer-Frontend" cmd /c "cd /d D:\Opencode\OpenCode_models\Normalize\old && npm run dev"
+start "Normalizer-Frontend" cmd /c "cd /d D:\Opencode\OpenCode_models\Normalize\frontend && npm run dev"
 echo     Frontend starting...
 timeout /t 5 /nobreak >nul
 

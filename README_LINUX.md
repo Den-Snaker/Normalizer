@@ -26,7 +26,7 @@ chmod +x install.sh
 ### Шаг 3: Настроить API ключи
 
 ```bash
-nano ~/Normalizer/old/.env.local
+nano ~/Normalizer/frontend/.env.local
 ```
 
 Добавьте ваши ключи:
@@ -153,7 +153,7 @@ chmod +x install.sh
 ./install.sh
 
 # 3. Настроить API ключи
-nano ~/Normalizer/old/.env.local
+nano ~/Normalizer/frontend/.env.local
 
 # 4. Установить как сервис
 cd ~/Normalizer
@@ -234,7 +234,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Переустановить frontend
-cd ~/Normalizer/old
+cd ~/Normalizer/frontend
 rm -rf node_modules
 npm install
 npm run build

@@ -118,7 +118,7 @@ echo.
 echo [Step 4/7] Installing frontend dependencies...
 echo.
 
-cd /d "%INSTALL_DIR%Normalizer\old"
+cd /d "%INSTALL_DIR%Normalizer\frontend"
 
 call npm install
 if %errorlevel% neq 0 (
@@ -194,7 +194,7 @@ echo.
 echo echo [3/3] Updating dependencies...
 echo cd /d "%INSTALL_DIR%Normalizer\backend"
 echo pip install -r requirements.txt
-echo cd /d "%INSTALL_DIR%Normalizer\old"
+echo cd /d "%INSTALL_DIR%Normalizer\frontend"
 echo call npm install
 echo call npm run build
 echo.
@@ -232,8 +232,8 @@ if not exist "backend\.env" (
     )
 )
 
-if not exist "old\.env.local" (
-    echo [INFO] Please create old\.env.local with your API keys:
+if not exist "frontend\.env.local" (
+    echo [INFO] Please create frontend\.env.local with your API keys:
     echo        VITE_GEMINI_API_KEY=your_key
     echo        VITE_OPENROUTER_API_KEY=your_key
     echo        VITE_API_URL=http://localhost:8000

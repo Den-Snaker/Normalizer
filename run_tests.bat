@@ -23,7 +23,7 @@ echo.
 echo Checking dependencies...
 echo.
 
-cd /d D:\Opencode\OpenCode_models\Normalize\old
+cd /d D:\Opencode\OpenCode_models\Normalize\frontend
 
 if not exist "node_modules\vitest" (
     echo Installing vitest dependencies...
@@ -122,7 +122,7 @@ if "%FRONTEND_RESULT%"=="PASSED" if "%BACKEND_RESULT%"=="PASSED" (
 echo.
 echo ==================================================
 echo   Test locations:
-echo   Frontend: D:\Opencode\OpenCode_models\Normalize\old\test\
+echo   Frontend: D:\Opencode\OpenCode_models\Normalize\frontend\test\
 echo   Backend:  D:\Opencode\OpenCode_models\Normalize\backend\test_schemas.py
 echo ==================================================
 echo.

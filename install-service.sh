@@ -73,7 +73,7 @@ After=network.target
 [Service]
 Type=simple
 User=$USER_NAME
-WorkingDirectory=$INSTALL_DIR/old
+WorkingDirectory=$INSTALL_DIR/frontend
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 3000
 Restart=always

@@ -93,6 +93,17 @@ const App: React.FC = () => {
   const handleCheckLlm = async () => {
     setIsCheckingLlm(true);
     setLlmStatus(null);
+    const TIMEOUT_MS = 15000;
+    
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => 
+          setTimeout(() => reject(new Error(`Превышено время ожидания (${ms/1000}с)`)), ms)
+        )
+      ]);
+    };
+    
     try {
       const config = dbConfig.llm;
       const testPrompt = 'Ответь одним словом: ОК';
@@ -100,33 +111,46 @@ const App: React.FC = () => {
       if (config.provider === 'google') {
         const apiKey = config.googleApiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('API ключ Google Gemini не указан. Введите ключ в настройках.');
-        const { GoogleGenAI, Type } = await import('@google/genai');
+        const { GoogleGenAI } = await import('@google/genai');
         const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-          model: config.googleModel,
-          contents: testPrompt,
-        });
+        await withTimeout(
+          ai.models.generateContent({
+            model: config.googleModel,
+            contents: testPrompt,
+          }),
+          TIMEOUT_MS
+        );
         setLlmStatus({ ok: true, msg: `✓ Модель ${config.googleModel} доступна` });
       } else if (config.provider === 'openrouter') {
         const apiKey = config.openrouterApiKey || import.meta.env.VITE_OPENROUTER_API_KEY || '';
         if (!apiKey) throw new Error('API ключ OpenRouter не указан. Введите ключ в настройках.');
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: config.openrouterModel,
-            messages: [{ role: 'user', content: testPrompt }],
-            max_tokens: 10,
-          }),
-        });
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error?.message || `Ошибка ${response.status}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: config.openrouterModel,
+              messages: [{ role: 'user', content: testPrompt }],
+              max_tokens: 10,
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || `Ошибка ${response.status}`);
+          }
+          setLlmStatus({ ok: true, msg: `✓ Модель ${config.openrouterModel} доступна` });
+        } catch (e: any) {
+          clearTimeout(timeoutId);
+          if (e.name === 'AbortError') throw new Error(`Превышено время ожидания (${TIMEOUT_MS/1000}с)`);
+          throw e;
         }
-        setLlmStatus({ ok: true, msg: `✓ Модель ${config.openrouterModel} доступна` });
       } else if (config.provider === 'ollama') {
         const isCloud = config.ollamaMode === 'cloud';
         const endpoint = isCloud ? getApiUrl() : config.ollamaEndpoint;
@@ -140,7 +164,6 @@ const App: React.FC = () => {
           stream: false,
         };
         
-        // Для Ollama Cloud передаём API ключ
         if (isCloud) {
           if (!config.ollamaCloudApiKey) {
             throw new Error('API ключ Ollama Cloud не указан. Введите ключ в настройках.');
@@ -148,16 +171,26 @@ const App: React.FC = () => {
           body.api_key = config.ollamaCloudApiKey;
         }
         
-        const response = await fetch(`${endpoint}/ollama/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-          const err = await response.text();
-          throw new Error(err || `Ошибка ${response.status}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+          const response = await fetch(`${endpoint}/ollama/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            const err = await response.text();
+            throw new Error(err || `Ошибка ${response.status}`);
+          }
+          setLlmStatus({ ok: true, msg: `✓ Модель ${model} доступна` });
+        } catch (e: any) {
+          clearTimeout(timeoutId);
+          if (e.name === 'AbortError') throw new Error(`Превышено время ожидания (${TIMEOUT_MS/1000}с)`);
+          throw e;
         }
-        setLlmStatus({ ok: true, msg: `✓ Модель ${model} доступна` });
       }
     } catch (e: any) {
       setLlmStatus({ ok: false, msg: `✗ ${e.message || 'Ошибка соединения'}` });

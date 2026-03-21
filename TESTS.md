@@ -2,7 +2,7 @@
 
 ## Структура тестов
 
-### Frontend тесты (`old/test/`)
+### Frontend тесты (`frontend/test/`)
 
 #### `gemini.test.ts` - 20 тестов
 Тесты для функций конвертации единиц измерения:
@@ -64,7 +64,7 @@
 
 ### Frontend
 ```bash
-cd old
+cd frontend
 npm run test          # Запуск всех тестов
 npm run test:watch    # Запуск в режиме watch
 npm run test:coverage # Запуск с покрытием кода
@@ -89,7 +89,7 @@ python -m pytest test_schemas.py -v
 
 ## Добавление новых тестов
 
-1. **Frontend тесты**: создайте файл `old/test/*.test.ts`
+1. **Frontend тесты**: создайте файл `frontend/test/*.test.ts`
 2. **Backend тесты**: создайте файл `backend/test_*.py`
 
 Тесты должны быть:

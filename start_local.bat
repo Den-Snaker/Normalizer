@@ -32,7 +32,7 @@ timeout /t 3 /nobreak >nul
 
 :: Start Frontend
 echo [3/4] Starting Frontend (port 3000)...
-start "Normalizer-Frontend" cmd /c "cd /d D:\Opencode\OpenCode_models\Normalize\old && npm run dev"
+start "Normalizer-Frontend" cmd /c "cd /d D:\Opencode\OpenCode_models\Normalize\frontend && npm run dev"
 echo     Frontend starting...
 timeout /t 5 /nobreak >nul
 

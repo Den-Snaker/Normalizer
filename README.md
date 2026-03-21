@@ -57,7 +57,7 @@ python -m venv venv
 pip install -r backend/requirements.txt
 
 # Frontend
-cd old
+cd frontend
 npm install
 cd ..
 ```
@@ -83,7 +83,7 @@ npm run dev
 git pull origin main
 .\venv\Scripts\activate
 pip install -r backend/requirements.txt
-cd old && npm install && cd ..
+cd frontend && npm install && cd ..
 ```
 
 ## Структура проекта
@@ -100,7 +100,7 @@ Normalizer/
 │   │   ├── excel.py    # Экспорт в Excel
 │   │   └── ktru_parser.py  # Парсер КТРУ
 │   └── requirements.txt
-├── old/                  # React frontend
+├── frontend/             # React frontend
 │   ├── App.tsx          # Главный компонент
 │   ├── services/
 │   │   ├── gemini.ts   # AI клиент
