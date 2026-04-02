@@ -61,11 +61,14 @@ export const LLM_MODELS = {
   ],
   
   openrouter: [
-    { id: 'qwen/qwen3-235b-a22b-thinking-2507:free', name: 'Qwen3 235B Thinking', free: true },
-    { id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder', free: true },
+    // Qwen FREE models (verified 2026-04-02)
+    { id: 'qwen/qwen3.6-plus-preview:free', name: 'Qwen3.6 Plus Preview (1M)', free: true, newest: true },
+    { id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B', free: true },
     { id: 'qwen/qwen3-next-80b-a3b-instruct:free', name: 'Qwen3 Next 80B', free: true },
-    { id: 'google/gemini-2.5-flash:free', name: 'Gemini 2.5 Flash', free: true },
-    { id: 'google/gemma-3-27b-it:free', name: 'Gemma 3 27B', free: true },
+    
+    // Other FREE models
+    { id: 'google/gemini-2.5-flash:free', name: 'Gemini 2.5 Flash (Vision)', free: true },
+    { id: 'google/gemma-3-27b-it:free', name: 'Gemma 3 27B (Vision)', free: true },
     { id: 'openai/gpt-oss-120b:free', name: 'GPT-OSS 120B', free: true },
     { id: 'openai/gpt-oss-20b:free', name: 'GPT-OSS 20B', free: true },
     { id: 'deepseek/deepseek-r1-0528:free', name: 'DeepSeek R1', free: true },
@@ -73,8 +76,16 @@ export const LLM_MODELS = {
     { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B', free: true },
     { id: 'nvidia/nemotron-3-nano-30b-a3b:free', name: 'Nemotron 3 Nano', free: true },
     { id: 'arcee-ai/trinity-mini:free', name: 'Trinity Mini', free: true },
-    { id: 'google/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', free: false },
-    { id: 'google/gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', free: false },
+    
+    // Paid models
+    { id: 'qwen/qwen3-max', name: 'Qwen3 Max', free: false },
+    { id: 'qwen/qwen3-max-thinking', name: 'Qwen3 Max Thinking', free: false },
+    { id: 'qwen/qwen3-vl-235b-a22b-instruct', name: 'Qwen3 VL 235B (Vision)', free: false },
+    { id: 'qwen/qwen3-vl-32b-instruct', name: 'Qwen3 VL 32B (Vision)', free: false },
+    { id: 'qwen/qwen3.5-flash-02-23', name: 'Qwen3.5 Flash 1M (Vision)', free: false },
+    { id: 'qwen/qwen3.5-plus-02-15', name: 'Qwen3.5 Plus 1M (Vision)', free: false },
+    { id: 'google/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview (Vision)', free: false },
+    { id: 'google/gemini-3-flash-preview', name: 'Gemini 3 Flash Preview (Vision)', free: false },
     { id: 'openai/gpt-4o', name: 'GPT-4o', free: false },
     { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false },
   ],
