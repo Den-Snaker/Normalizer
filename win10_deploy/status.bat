@@ -1,8 +1,7 @@
 @echo off
-REM status.bat - Проверка статуса серверов Normalizer
 
 echo ============================================================
-echo   СТАТУС NORMALIZER
+echo   NORMALIZER STATUS
 echo ============================================================
 echo.
 
