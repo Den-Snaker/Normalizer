@@ -140,8 +140,26 @@ export const parseFile = async (file: File): Promise<string | { data: string; mi
     } catch (e: any) {
       console.error('[PDF] extractPdfText failed:', e.message);
     }
-    // Если текст не извлёкся - всё равно НЕ отправляем PDF как бинарник в Ollama Cloud
-    // Показываем ошибку
+    // Если текст не извлёкся - отправляем как изображение для vision-моделей
+    console.log('[PDF] Trying to render PDF as image for vision model');
+    try {
+      const pdfjsLib = await import('pdfjs-dist');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
+      return { data: base64, mimeType: 'image/png' };
+    } catch (renderErr: any) {
+      console.error('[PDF] render to image failed:', renderErr.message);
+    }
     throw new Error(
       'Не удалось извлечь текст из PDF. ' +
       'PDF содержит изображения или повреждён. ' +

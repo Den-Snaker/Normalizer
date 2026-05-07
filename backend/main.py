@@ -84,6 +84,26 @@ async def seed_initial_data():
 # Users must provide their API key through the UI settings
 
 
+CLOUD_MODELS = {
+    "glm-5", "glm-5.1", "glm-4.7", "glm-4.7-flash", "glm-4.6",
+    "kimi-k2.6", "kimi-k2.5",
+    "minimax-m2.7", "minimax-m2.5",
+    "nemotron-3-super", "deepseek-v3.2", "deepseek-v4-pro", "deepseek-v4-flash",
+    "gemma4", "devstral-2:123b", "devstral-small-2:24b",
+    "nemotron-cascade-2:30b", "lfm2:24b",
+    "qwen3.5:cloud", "qwen3.5:397b-cloud",
+    "qwen3-coder-next", "qwen3-next:80b",
+    "qwen3-vl:235b-cloud", "qwen3-vl:235b-instruct-cloud",
+    "glm-ocr", "gemini-3-flash-preview",
+    "nemotron3",
+}
+
+
+def _is_cloud_model(model_name: str) -> bool:
+    base = model_name.split(":")[0]
+    return base in CLOUD_MODELS or model_name in CLOUD_MODELS
+
+
 @app.post("/ollama/generate", response_model=OllamaResponse)
 async def ollama_generate(request: OllamaRequest):
     """
@@ -101,42 +121,84 @@ async def ollama_generate(request: OllamaRequest):
         "Authorization": f"Bearer {api_key}"
     }
     
-    body = {
-        "model": request.model,
-        "prompt": request.prompt,
-        "stream": request.stream,
-    }
-    if request.options:
-        body["options"] = request.options
-    if request.images:
-        body["images"] = request.images
+    is_cloud = _is_cloud_model(request.model)
     
-    async with httpx.AsyncClient(timeout=600.0) as client:
-        response = await client.post(
-            f"{endpoint}/generate",
-            headers=headers,
-            json=body
-        )
+    if is_cloud:
+        body = {
+            "model": request.model,
+            "prompt": request.prompt,
+            "stream": False,
+        }
+        if request.images:
+            body["images"] = request.images
+        if request.options:
+            body["options"] = request.options
         
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Ошибка Ollama: {response.text}"
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            response = await client.post(
+                f"{endpoint}/generate",
+                headers=headers,
+                json=body
             )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Ошибка Ollama: {response.text}"
+                )
+            
+            data = response.json()
+            
+            content = data.get("response", "")
+            
+            token_usage = None
+            if "prompt_eval_count" in data or "eval_count" in data:
+                prompt_tokens = data.get("prompt_eval_count", 0) or 0
+                completion_tokens = data.get("eval_count", 0) or 0
+                total = prompt_tokens + completion_tokens
+                token_usage = f"K_{prompt_tokens}+P_{completion_tokens}=T_{total}"
+            
+            return OllamaResponse(
+                response=content,
+                token_usage=token_usage
+            )
+    else:
+        body = {
+            "model": request.model,
+            "prompt": request.prompt,
+            "stream": False,
+        }
+        if request.options:
+            body["options"] = request.options
+        if request.images:
+            body["images"] = request.images
         
-        data = response.json()
-        
-        token_usage = None
-        if "prompt_eval_count" in data or "eval_count" in data:
-            prompt_tokens = data.get("prompt_eval_count", 0) or 0
-            completion_tokens = data.get("eval_count", 0) or 0
-            total = prompt_tokens + completion_tokens
-            token_usage = f"K_{prompt_tokens}+P_{completion_tokens}=T_{total}"
-        
-        return OllamaResponse(
-            response=data.get("response", ""),
-            token_usage=token_usage
-        )
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            response = await client.post(
+                f"{endpoint}/generate",
+                headers=headers,
+                json=body
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Ошибка Ollama: {response.text}"
+                )
+            
+            data = response.json()
+            
+            token_usage = None
+            if "prompt_eval_count" in data or "eval_count" in data:
+                prompt_tokens = data.get("prompt_eval_count", 0) or 0
+                completion_tokens = data.get("eval_count", 0) or 0
+                total = prompt_tokens + completion_tokens
+                token_usage = f"K_{prompt_tokens}+P_{completion_tokens}=T_{total}"
+            
+            return OllamaResponse(
+                response=data.get("response", ""),
+                token_usage=token_usage
+            )
 
 
 @app.get("/")

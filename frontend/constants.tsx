@@ -108,65 +108,44 @@ export const LLM_MODELS = {
     
     // Paid models - Others
     { id: 'z-ai/glm-5.1', name: 'GLM 5.1 (Thinking)', free: false, newest: true },
+    { id: 'z-ai/glm-5', name: 'GLM 5', free: false },
+    { id: 'z-ai/glm-5-turbo', name: 'GLM 5 Turbo', free: false },
+    { id: 'z-ai/glm-4.7', name: 'GLM 4.7', free: false },
+    { id: 'z-ai/glm-4.7-flash', name: 'GLM 4.7 Flash', free: false },
+    { id: 'z-ai/glm-4.6', name: 'GLM 4.6', free: false },
     { id: 'x-ai/grok-4', name: 'Grok 4 (Vision+Thinking)', free: false, newest: true },
     { id: 'x-ai/grok-4-fast', name: 'Grok 4 Fast (2M Vision)', free: false, newest: true },
     { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2 (Thinking)', free: false, newest: true },
     { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick (1M Vision)', free: false, newest: true },
     { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6 (Vision+Thinking)', free: false, newest: true },
+    { id: 'mistralai/mistral-large-2512', name: 'Mistral Large 3 (Vision)', free: false, newest: true },
   ],
   
   ollama_cloud: [
-    // GLM models
+    // GLM models (cloud only on Ollama)
     { id: 'glm-5.1', name: 'GLM 5.1 (Thinking+Tools)', cloud: true, newest: true },
     { id: 'glm-5', name: 'GLM-5 (744B)', cloud: true },
     { id: 'glm-4.7', name: 'GLM 4.7 (Thinking)', cloud: true },
     { id: 'glm-4.7-flash', name: 'GLM 4.7 Flash', cloud: true },
     { id: 'glm-4.6', name: 'GLM 4.6', cloud: true },
     
-    // Qwen models
-    { id: 'qwen3.6', name: 'Qwen 3.6 (Vision+Thinking)', cloud: true, vision: true, newest: true },
-    { id: 'qwen3.5:cloud', name: 'Qwen 3.5 Cloud', cloud: true, vision: true },
-    { id: 'qwen3.5:397b-cloud', name: 'Qwen 3.5 (397B) Cloud', cloud: true, vision: true },
+    // Qwen cloud models
     { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', cloud: true },
+    { id: 'qwen3.5', name: 'Qwen 3.5 Cloud (Vision)', cloud: true, vision: true },
     { id: 'qwen3-next:80b', name: 'Qwen3 Next (80B)', cloud: true },
     
-    // Qwen VL models
-    { id: 'qwen3-vl:235b-cloud', name: 'Qwen 3 VL (235B) Cloud', cloud: true, vision: true },
-    { id: 'qwen3-vl:235b-instruct-cloud', name: 'Qwen 3 VL Instruct Cloud', cloud: true, vision: true },
+    // DeepSeek V4 (cloud)
+    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro (1M)', cloud: true, newest: true },
+    { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', cloud: true, newest: true },
     
-    // Gemma 4
-    { id: 'gemma4', name: 'Gemma 4 (Vision+Video+Thinking)', cloud: true, vision: true, newest: true },
-    
-    // Kimi
+    // Kimi (cloud)
     { id: 'kimi-k2.6', name: 'Kimi K2.6 (Vision+Thinking)', cloud: true, vision: true, newest: true },
-    { id: 'kimi-k2.5', name: 'Kimi K2.5', cloud: true, vision: true },
-    
-    // Devstral
-    { id: 'devstral-2:123b', name: 'Devstral 2 (123B)', cloud: true },
-    { id: 'devstral-small-2:24b', name: 'Devstral Small 2 (24B)', cloud: true },
-    
-    // MiniMax
-    { id: 'minimax-m2.7', name: 'MiniMax M2.7', cloud: true },
-    { id: 'minimax-m2.5', name: 'MiniMax M2.5', cloud: true },
-    
-    // Nemotron
-    { id: 'nemotron-3-super', name: 'Nemotron 3 Super (120B)', cloud: true },
-    { id: 'nemotron-cascade-2:30b', name: 'Nemotron Cascade 2 (30B)', cloud: true, newest: true },
-    { id: 'nemotron-3-nano:30b', name: 'Nemotron 3 Nano (30B)', cloud: true },
-    { id: 'nemotron-3-nano:4b', name: 'Nemotron 3 Nano (4B)', cloud: true },
-    
-    // Ministral
-    { id: 'ministral-3:14b', name: 'Ministral 3 (14B)', cloud: true },
-    { id: 'ministral-3:8b', name: 'Ministral 3 (8B)', cloud: true },
-    { id: 'ministral-3:3b', name: 'Ministral 3 (3B)', cloud: true },
+    { id: 'kimi-k2.5', name: 'Kimi K2.5 (Vision)', cloud: true, vision: true },
     
     // Other cloud models
-    { id: 'rnj-1:8b', name: 'Rnj-1 (8B)', cloud: true },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', cloud: true, vision: true },
+    { id: 'minimax-m2.7', name: 'MiniMax M2.7', cloud: true },
     { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', cloud: true },
-    { id: 'lfm2:24b', name: 'LFM2 (24B)', cloud: true },
-    { id: 'glm-ocr', name: 'GLM-OCR (Vision)', cloud: true, vision: true, newest: true },
-    { id: 'medgemma:27b', name: 'MedGemma (27B Vision)', cloud: true, vision: true },
+    { id: 'glm-ocr', name: 'GLM-OCR (Vision)', cloud: true, vision: true },
   ],
   
   ollama_local_popular: [
@@ -174,6 +153,7 @@ export const LLM_MODELS = {
     { id: 'llama3.3', name: 'Llama 3.3' },
     { id: 'llama4', name: 'Llama 4 (Vision+Video)', vision: true, newest: true },
     { id: 'deepseek-r1', name: 'DeepSeek R1' },
+    { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', newest: true },
     { id: 'gpt-oss', name: 'GPT-OSS' },
     { id: 'qwen3', name: 'Qwen 3' },
     { id: 'qwen3.6', name: 'Qwen 3.6 (Vision+Thinking)', vision: true, newest: true },
@@ -184,6 +164,10 @@ export const LLM_MODELS = {
     { id: 'phi4', name: 'Phi-4' },
     { id: 'mistral', name: 'Mistral' },
     { id: 'codellama', name: 'Code Llama' },
+    { id: 'nemotron3', name: 'Nemotron 3 Nano Omni (Audio+Vision)', vision: true, newest: true },
+    { id: 'kimi-k2.6', name: 'Kimi K2.6 (Vision+Thinking)', vision: true, newest: true },
+    { id: 'glm-5.1', name: 'GLM 5.1 (Thinking+Tools)', newest: true },
+    { id: 'glm-4.7-flash', name: 'GLM 4.7 Flash' },
   ],
 };
 

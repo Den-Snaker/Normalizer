@@ -431,8 +431,9 @@ async function generateOllama(prompt: string, config: LLMConfig, options?: Gener
   let headers: Record<string, string> = { 'Content-Type': 'application/json' };
   
   if (isCloud) {
-    // Для облачного Ollama используем backend прокси
-    endpoint = getApiUrl();
+    const currentHost = window.location.hostname;
+    const apiHost = (currentHost !== 'localhost' && currentHost !== '127.0.0.1') ? currentHost : 'localhost';
+    endpoint = `http://${apiHost}:8000`;
   } else {
     // Для локального Ollama - прямой запрос
     endpoint = config.ollamaEndpoint || 'http://localhost:11434';
